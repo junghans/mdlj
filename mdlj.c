@@ -75,49 +75,76 @@ int xyz_in (FILE * fp, double * rx, double * ry, double * rz,
   return has_vel;
 }
 
-/* An N^2 algorithm for computing forces and potential energy.  The virial
-   is also computed and returned in *vir. */
+/** \brief calculated Lennard-Jones interaction between two particles
+ * \param[in] i index of particle i
+ * \param[in] j index of particle j
+ * \param[in,out] rx array of x-coordinate of the position of all particles
+ * \param[in,out] ry array of y-coordinate of the position of all particles
+ * \param[in,out] rz array of z-coordinate of the position of all particles
+ * \param[in,out] fx array of x-coordinate of the force of all particles
+ * \param[in,out] fy array of y-coordinate of the force of all particles
+ * \param[in,out] fz array of z-coordinate of the force of all particles
+ * \param[in] L box length
+ * \param[in] rc2 square of the cutoff distance
+ * \param[in] ecut energy varlue at the cutoff
+ * \param[in,out] vir variable to add the virial contribute to
+ * \param[in,out] e variable to add the energy contribute to
+ */
+void calc_lj ( int i, int j, double * rx, double * ry, double * rz,
+               double * fx, double * fy, double * fz, double L,
+	       double rc2, double ecut, double * vir, double *e) {
+  double dx,dy, dz, r6i, f, r2;
+
+  double  hL=L/2.0;
+
+  dx  = (rx[i]-rx[j]);
+  dy  = (ry[i]-ry[j]);
+  dz  = (rz[i]-rz[j]);
+  /* Periodic boundary conditions: Apply the minimum image
+     convention; note that this is *not* used to truncate the
+     potential as long as there an explicit cutoff. */
+  if (dx>hL)       dx-=L;
+  else if (dx<-hL) dx+=L;
+  if (dy>hL)       dy-=L;
+  else if (dy<-hL) dy+=L;
+  if (dz>hL)       dz-=L;
+  else if (dz<-hL) dz+=L;
+  r2 = dx*dx + dy*dy + dz*dz;
+  if (r2<rc2) {
+    r6i   = 1.0/(r2*r2*r2);
+    *e   += 4*(r6i*r6i - r6i) - ecut;
+    f     = 48*(r6i*r6i-0.5*r6i);
+    fx[i] += dx*f/r2;
+    fx[j] -= dx*f/r2;
+    fy[i] += dy*f/r2;
+    fy[j] -= dy*f/r2;
+    fz[i] += dz*f/r2;
+    fz[j] -= dz*f/r2;
+    *vir += f;
+  }
+}
+
+/** \brief N^2 algorithm for computing forces and potential energy.
+ * N^2 algorithm for computing forces and potential energy. The virial
+ *  is also computed and returned in *vir. 
+ */
 double total_e ( double * rx, double * ry, double * rz, 
-		 double * fx, double * fy, double * fz, 
+		 double * fx, double * fy, double * fz,
 		 int N, double L,
 		 double rc2, double ecor, double ecut, double * vir ) {
    int i,j;
-   double dx, dy, dz, r2, r6i;
-   double e = 0.0, hL=L/2.0,f;
+   double e = 0.0;
 
    /* Zero the forces */
    for (i=0;i<N;i++) {
      fx[i]=fy[i]=fz[i]=0.0;
    }
-   
+  
+   //if (update_nblist) {
    *vir=0.0;
    for (i=0;i<(N-1);i++) {
      for (j=i+1;j<N;j++) {
-	dx  = (rx[i]-rx[j]);
-	dy  = (ry[i]-ry[j]);
-	dz  = (rz[i]-rz[j]);
-	/* Periodic boundary conditions: Apply the minimum image
-	   convention; note that this is *not* used to truncate the
-	   potential as long as there an explicit cutoff. */
-	if (dx>hL)       dx-=L;
-	else if (dx<-hL) dx+=L;
-	if (dy>hL)       dy-=L;
-	else if (dy<-hL) dy+=L;
-	if (dz>hL)       dz-=L;
-	else if (dz<-hL) dz+=L;
-	r2 = dx*dx + dy*dy + dz*dz;
-	if (r2<rc2) {
-	  r6i   = 1.0/(r2*r2*r2);
-	  e    += 4*(r6i*r6i - r6i) - ecut;
-	  f     = 48*(r6i*r6i-0.5*r6i);
-	  fx[i] += dx*f/r2;
-	  fx[j] -= dx*f/r2;
-	  fy[i] += dy*f/r2;
-	  fy[j] -= dy*f/r2;
-	  fz[i] += dz*f/r2;
-	  fz[j] -= dz*f/r2;
-	  *vir += f;
-	}
+       calc_lj(i,j,rx,ry,rz,fx,fy,fz,L,rc2,ecut,vir,&e);
      }
    }
    return e+N*ecor;
