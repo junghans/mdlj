@@ -1,0 +1,6 @@
+syntax:glob
+
+*~
+Makefile
+*.o
+mdlj
