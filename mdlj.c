@@ -32,6 +32,7 @@ void usage ( void ) {
   fprintf(stdout,"\t -sf [a|w]\t\tAppend or write config output file\n");
   fprintf(stdout,"\t -icf [string]\t\tInitial configuration file\n");
   fprintf(stdout,"\t -seed [integer]\tRandom number generator seed\n");
+  fprintf(stdout,"\t -vlup [integer]\tUse Verlet list and update every int steps\n");
   fprintf(stdout,"\t -uf          \t\tPrint unfolded coordinates in output files\n");
   fprintf(stdout,"\t -h           \t\tPrint this info\n");
 }
@@ -75,12 +76,50 @@ int xyz_in (FILE * fp, double * rx, double * ry, double * rz,
   return has_vel;
 }
 
-/** \brief calculated Lennard-Jones interaction between two particles
+/** \brief calculates periodic distance between two particles
  * \param[in] i index of particle i
  * \param[in] j index of particle j
- * \param[in,out] rx array of x-coordinate of the position of all particles
- * \param[in,out] ry array of y-coordinate of the position of all particles
- * \param[in,out] rz array of z-coordinate of the position of all particles
+ * \param[in] rx array of x-coordinate of the position of all particles
+ * \param[in] ry array of y-coordinate of the position of all particles
+ * \param[in] rz array of z-coordinate of the position of all particles
+ * \param[out] dx difference in x-direction
+ * \param[out] dy difference in y-direction
+ * \param[out] dz difference in z-direction
+ * \param[in] L box length
+ * \return square shorted distance of all periodic images
+ */
+double per_dist2(int i, int j, 
+    double *rx, double *ry, double *rz,
+    double *dx,double *dy,double *dz,double L) {
+  double  r2,hL=L/2.0;
+
+  /* Periodic boundary conditions: Apply the minimum image
+     convention; note that this is *not* used to truncate the
+     potential as long as there an explicit cutoff. */
+  
+  *dx  = (rx[i]-rx[j]);
+  *dy  = (ry[i]-ry[j]);
+  *dz  = (rz[i]-rz[j]);
+  
+  if (*dx>hL)       *dx-=L;
+  else if (*dx<-hL) *dx+=L;
+  if (*dy>hL)       *dy-=L;
+  else if (*dy<-hL) *dy+=L;
+  if (*dz>hL)       *dz-=L;
+  else if (*dz<-hL) *dz+=L;
+  r2 = *dx* *dx + *dy* *dy + *dz* *dz;
+  return r2;
+}
+
+
+
+/** \brief calculates Lennard-Jones interaction between two particles
+ * \param[in] i index of particle i
+ * \param[in] j index of particle j
+ * \param[in] dx array of x-coordinate of the distance vetor
+ * \param[in] dy array of y-coordinate of the distance vetor
+ * \param[in] dz array of z-coordinate of the distance vetor
+ * \param[in] r2 square of the distance vector
  * \param[in,out] fx array of x-coordinate of the force of all particles
  * \param[in,out] fy array of y-coordinate of the force of all particles
  * \param[in,out] fz array of z-coordinate of the force of all particles
@@ -90,26 +129,11 @@ int xyz_in (FILE * fp, double * rx, double * ry, double * rz,
  * \param[in,out] vir variable to add the virial contribute to
  * \param[in,out] e variable to add the energy contribute to
  */
-void calc_lj ( int i, int j, double * rx, double * ry, double * rz,
+void calc_lj ( int i, int j, double dx, double dy, double dz, double r2,
                double * fx, double * fy, double * fz, double L,
 	       double rc2, double ecut, double * vir, double *e) {
-  double dx,dy, dz, r6i, f, r2;
+  double r6i, f;
 
-  double  hL=L/2.0;
-
-  dx  = (rx[i]-rx[j]);
-  dy  = (ry[i]-ry[j]);
-  dz  = (rz[i]-rz[j]);
-  /* Periodic boundary conditions: Apply the minimum image
-     convention; note that this is *not* used to truncate the
-     potential as long as there an explicit cutoff. */
-  if (dx>hL)       dx-=L;
-  else if (dx<-hL) dx+=L;
-  if (dy>hL)       dy-=L;
-  else if (dy<-hL) dy+=L;
-  if (dz>hL)       dz-=L;
-  else if (dz<-hL) dz+=L;
-  r2 = dx*dx + dy*dy + dz*dz;
   if (r2<rc2) {
     r6i   = 1.0/(r2*r2*r2);
     *e   += 4*(r6i*r6i - r6i) - ecut;
@@ -124,27 +148,61 @@ void calc_lj ( int i, int j, double * rx, double * ry, double * rz,
   }
 }
 
-/** \brief N^2 algorithm for computing forces and potential energy.
- * N^2 algorithm for computing forces and potential energy. The virial
+/** \brief algorithm for computing forces and potential energy.
+ * algorithm for computing forces and potential energy. The virial
  *  is also computed and returned in *vir. 
  */
 double total_e ( double * rx, double * ry, double * rz, 
 		 double * fx, double * fy, double * fz,
-		 int N, double L,
+		 int N, double L, int update_nblist, int *nblist, int *nblist_pointer,
 		 double rc2, double ecor, double ecut, double * vir ) {
-   int i,j;
+   int i,j,k;
    double e = 0.0;
+
+   double dx,dy,dz,r2;
+
+   *vir=0.0;
+
+   double rlist=3.0;
 
    /* Zero the forces */
    for (i=0;i<N;i++) {
      fx[i]=fy[i]=fz[i]=0.0;
    }
   
-   //if (update_nblist) {
-   *vir=0.0;
-   for (i=0;i<(N-1);i++) {
-     for (j=i+1;j<N;j++) {
-       calc_lj(i,j,rx,ry,rz,fx,fy,fz,L,rc2,ecut,vir,&e);
+   if (!nblist) {
+     /* do N square calculation */
+     for (i=0;i<(N-1);i++) {
+       for (j=i+1;j<N;j++) {
+	 r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
+         calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
+       }
+     }
+   }
+   else if (update_nblist) {
+     /* update neighbor list and calc lj */
+     k=0;
+     for (i=0;i<(N-1);i++) {
+       for (j=i+1;j<N;j++) {
+         nblist_pointer[i]=k;
+	 r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
+	 if (r2<rlist) {
+	   nblist[k]=j;
+	   k++;
+           calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
+	 }
+       }
+     }
+     nblist_pointer[N-1]=k;
+   }
+   else {
+     /* use existing neighbor list */
+     for (i=0;i<(N-1);i++) {
+       for (k=nblist_pointer[i];k<nblist_pointer[i+1];k++) {
+	 j=nblist[k];
+	 r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
+         calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
+       }
      }
    }
    return e+N*ecor;
@@ -290,6 +348,7 @@ int main ( int argc, char * argv[] ) {
   FILE * out;
   char * wrt_code_str = "w";
   char * init_cfg_file = NULL;
+  int nblist_frequenz=0;
 
   unsigned long int Seed = 23410981;
 
@@ -309,6 +368,7 @@ int main ( int argc, char * argv[] ) {
     else if (!strcmp(argv[i],"-icf")) init_cfg_file = argv[++i];
     else if (!strcmp(argv[i],"-ecorr")) use_e_corr = 1;
     else if (!strcmp(argv[i],"-seed")) Seed = (unsigned long)atoi(argv[++i]);
+    else if (!strcmp(argv[i],"-seed")) nblist_frequenz = (int)atoi(argv[++i]);
     else if (!strcmp(argv[i],"-uf")) unfold = 1;
     else if (!strcmp(argv[i],"-h")) {
       usage(); exit(0);
@@ -365,6 +425,13 @@ int main ( int argc, char * argv[] ) {
   fy = (double*)malloc(N*sizeof(double));
   fz = (double*)malloc(N*sizeof(double));
 
+  int *nblist=NULL,*nblist_pointer=NULL,update_nblist=0;
+  /* verlet list stuff */
+  if (nblist_frequenz > 0) {
+    nblist = (int *)malloc(N*N*sizeof(int));
+    nblist_pointer = (int *)malloc(N*sizeof(int));
+  }
+
   /* Generate initial positions on a cubic grid, 
      and measure initial energy */
   init(rx,ry,rz,vx,vy,vz,ix,iy,iz,N,L,T0,&KE,init_cfg_file);
@@ -373,7 +440,7 @@ int main ( int argc, char * argv[] ) {
   xyz_out(out,rx,ry,rz,vx,vy,vz,ix,iy,iz,L,N,16,1,unfold);
   fclose(out);
 
-  PE = total_e(rx,ry,rz,fx,fy,fz,N,L,rc2,ecor,ecut,&vir_old);
+  PE = total_e(rx,ry,rz,fx,fy,fz,N,L,1,nblist,nblist_pointer,rc2,ecor,ecut,&vir_old);
   TE0=PE+KE;
   
   fprintf(stdout,"# step PE KE TE drift T P\n");
@@ -397,7 +464,13 @@ int main ( int argc, char * argv[] ) {
       if (rz[i]>L)   { rz[i]-=L; iz[i]++; }
     }
     /* Calculate forces */
-    PE = total_e(rx,ry,rz,fx,fy,fz,N,L,rc2,ecor,ecut,&vir);
+    if (s%nblist_frequenz==0) {
+      update_nblist=1;
+    }
+    else {
+      update_nblist=0;
+    }
+    PE = total_e(rx,ry,rz,fx,fy,fz,N,L,update_nblist,nblist,nblist_pointer,rc2,ecor,ecut,&vir);
       
     /* Second integration half-step */
     KE = 0.0;
