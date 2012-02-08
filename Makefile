@@ -2,7 +2,7 @@ NAME=mdlj
 
 EXTRA_SRC=
 
-LIBS=-lgsl -lm
+LIBS=-lm
 
 OBJS=$(patsubst %.c,%.o,$(NAME).c $(EXTRA_SRC))
 

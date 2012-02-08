@@ -2,26 +2,18 @@
    Microcanonical Molecular Dynamics simulation of a Lennard-Jones fluid
    in a periodic boundary
 
-   Cameron F. Abrams
+   (c) 2004 Cameron F. Abrams
+   (c) 2012 Christoph Junghans
 
    Written for the course CHE 800-002, Molecular Simulation
-   Spring 0304
+   Spring 0304, Drexel University, Department of Chemical 
+   Engineering, Philadelphia
 
-   compile using "gcc -o mdlj mdlj.c -lm -lgsl"
-   (assumes the GNU Scientific Library is installed)
-
-   You must have the GNU Scientific Library installed; see
-   the coursenotes to learn how to do this.
-
-   Drexel University, Department of Chemical Engineering
-   Philadelphia
-   (c) 2004
+   compile using "gcc -o mdlj mdlj.c -lm"
 */
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include <gsl/gsl_rng.h>
-#include <gsl/gsl_randist.h>
 
 /* Prints usage information */
 void usage ( void ) {
@@ -130,6 +122,33 @@ double total_e ( double * rx, double * ry, double * rz,
    return e+N*ecor;
 }
 
+/** \brief generate gaussian random number
+ * generate a gaussian random number using the
+ * Box-Muller method
+ * \param[in] mean mean value of the gaussian
+ * \param[in sigma standard deviation of the gaussian
+ * \return gaussian random number
+ */
+double drand_gaussian(double mean, double sigma) {
+  static int i=0;
+  static double x2;
+  /* http://en.wikipedia.org/wiki/Box%E2%80%93Muller_transform */
+  double r,theta,u1,u2,x1;
+  if (i==0) {
+    i=1-i;
+    u1=1-drand48();
+    u2=1-drand48();
+    r=sqrt(-2*log(u1))*sigma;
+    theta=2*M_PI*u2;
+    x1 = r*cos(theta) + mean;
+    x2 = r*sin(theta) + mean ;
+    return(x1);
+  } else {
+    i=1-i;
+    return(x2);
+  }
+}
+
 /* Initialize particle positions by assigning them
    on a cubic grid, then scaling positions 
    to achieve a given box size and thereby, volume,
@@ -137,7 +156,7 @@ double total_e ( double * rx, double * ry, double * rz,
 void init ( double * rx, double * ry, double * rz,
 	    double * vx, double * vy, double * vz,
 	    int * ix, int * iy, int * iz,
-	    int n, double L, gsl_rng * r, double T0,
+	    int n, double L, double T0,
 	    double * KE, char * icf) {
   int i,iix,iiy,iiz;
   double cmvx=0.0,cmvy=0.0,cmvz=0.0;
@@ -182,9 +201,9 @@ void init ( double * rx, double * ry, double * rz,
   /* If no velocities yet assigned, randomly pick some */
   if (!vel_ok) {
     for (i=0;i<n;i++) {
-      vx[i]=gsl_ran_exponential(r,1.0);
-      vy[i]=gsl_ran_exponential(r,1.0);
-      vz[i]=gsl_ran_exponential(r,1.0);
+      vx[i]=drand_gaussian(0.0,1.0);
+      vy[i]=drand_gaussian(0.0,1.0);
+      vx[i]=drand_gaussian(0.0,1.0);
     }
   }
   /* Take away any center-of-mass drift; compute initial KE */
@@ -242,7 +261,6 @@ int main ( int argc, char * argv[] ) {
   char * wrt_code_str = "w";
   char * init_cfg_file = NULL;
 
-  gsl_rng * r = gsl_rng_alloc(gsl_rng_mt19937);
   unsigned long int Seed = 23410981;
 
   /* Here we parse the command line arguments;  If
@@ -295,7 +313,7 @@ int main ( int argc, char * argv[] ) {
 	  nSteps,Seed,dt);
   
   /* Seed the random number generator */
-  gsl_rng_set(r,Seed);
+  srand48(Seed);
   
   /* Allocate the position arrays */
   rx = (double*)malloc(N*sizeof(double));
@@ -319,7 +337,7 @@ int main ( int argc, char * argv[] ) {
 
   /* Generate initial positions on a cubic grid, 
      and measure initial energy */
-  init(rx,ry,rz,vx,vy,vz,ix,iy,iz,N,L,r,T0,&KE,init_cfg_file);
+  init(rx,ry,rz,vx,vy,vz,ix,iy,iz,N,L,T0,&KE,init_cfg_file);
   sprintf(fn,"%i.xyz",0);
   out=fopen(fn,"w");
   xyz_out(out,rx,ry,rz,vx,vy,vz,ix,iy,iz,L,N,16,1,unfold);
