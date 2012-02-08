@@ -13,6 +13,7 @@
 */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 
 /* Prints usage information */
@@ -168,7 +169,9 @@ void init ( double * rx, double * ry, double * rz,
      the input configuration in XYZ format */
   if (icf) {
     FILE * fp = fopen(icf,"r");
-    if (fp) vel_ok = xyz_in(fp,rx,ry,rz,vx,vy,vz,&n);
+    if (fp) {
+      vel_ok = xyz_in(fp,rx,ry,rz,vx,vy,vz,&n);
+    }
     else {
       fprintf(stderr,"# error: could not read %s\n",icf);
       exit(-1);
