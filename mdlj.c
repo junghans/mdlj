@@ -26,13 +26,13 @@ void usage ( void ) {
   fprintf(stdout,"\t -dt [real]\t\tTime step\n");
   fprintf(stdout,"\t -rc [real]\t\tCutoff radius\n");
   fprintf(stdout,"\t -ns [real]\t\tNumber of integration steps\n");
-  fprintf(stdout,"\t -so       \t\tShort-form output (unused)\n");
   fprintf(stdout,"\t -T0 [real]\t\tInitial temperature\n");
   fprintf(stdout,"\t -fs [integer]\t\tSample frequency\n");
   fprintf(stdout,"\t -sf [a|w]\t\tAppend or write config output file\n");
   fprintf(stdout,"\t -icf [string]\t\tInitial configuration file\n");
   fprintf(stdout,"\t -seed [integer]\tRandom number generator seed\n");
-  fprintf(stdout,"\t -vlup [integer]\tUse Verlet list and update every int steps\n");
+  fprintf(stdout,"\t -rlist [real]\tUse Verlet lists with this cutoff\n");
+  fprintf(stdout,"\t -uplist [int]\tVerlet lists update frequence (0=auto)\n");
   fprintf(stdout,"\t -uf          \t\tPrint unfolded coordinates in output files\n");
   fprintf(stdout,"\t -h           \t\tPrint this info\n");
 }
@@ -76,6 +76,50 @@ int xyz_in (FILE * fp, double * rx, double * ry, double * rz,
   return has_vel;
 }
 
+/** \brief save current positions
+ * \param[in] rx array of x-coordinate of the position of all particles
+ * \param[in] ry array of y-coordinate of the position of all particles
+ * \param[in] rz array of z-coordinate of the position of all particles
+ * \param[in] N number of particles
+ * \param[out] rx0 array of x-coordinate of the position of all particles
+ * \param[out] ry0 array of y-coordinate of the position of all particles
+ * \param[out] rz0 array of z-coordinate of the position of all particles
+ */
+void save_positions(double *rx,double *ry,double *rz,int N,
+                    double *rx0,double *ry0,double *rz0) {
+  int i;
+  for (i=0;i<N;i++) {
+    rx0[i]=rx[i];
+    ry0[i]=ry[i];
+    rz0[i]=rz[i];
+  }
+}
+
+/** \brief calculates the max distance a particle has moved
+ * \param[in] rx array of x-coordinate of the position of all particles
+ * \param[in] ry array of y-coordinate of the position of all particles
+ * \param[in] rz array of z-coordinate of the position of all particles
+ * \param[in] N number of particles
+ * \param[in] rx0 array of x-coordinate of the position of all particles
+ * \param[in] ry0 array of y-coordinate of the position of all particles
+ * \param[in] rz0 array of z-coordinate of the position of all particles
+ * \return square of the max distance moved
+ */
+double max_moved_distance(double *rx,double *ry,double *rz, int N,
+                        double *rx0,double *ry0,double *rz0) {
+  double max2=0;
+  int i;
+  for(i=0;i<N;i++) {
+    double dx2= (rx[i]-rx0[i])*(rx[i]-rx0[i]) \
+               +(ry[i]-ry0[i])*(ry[i]-ry0[i]) \
+               +(rz[i]-rz0[i])*(rz[i]-rz0[i]);
+    if (dx2>max2) {
+      max2=dx2;
+    }
+  }
+  return max2;
+}
+
 /** \brief calculates periodic distance between two particles
  * \param[in] i index of particle i
  * \param[in] j index of particle j
@@ -110,8 +154,6 @@ double per_dist2(int i, int j,
   r2 = *dx* *dx + *dy* *dy + *dz* *dz;
   return r2;
 }
-
-
 
 /** \brief calculates Lennard-Jones interaction between two particles
  * \param[in] i index of particle i
@@ -154,7 +196,7 @@ void calc_lj ( int i, int j, double dx, double dy, double dz, double r2,
  */
 double total_e ( double * rx, double * ry, double * rz, 
 		 double * fx, double * fy, double * fz,
-		 int N, double L, int update_nblist, int *nblist, int *nblist_pointer,
+		 int N, double L, int update_nblist, int *nblist, int *nblist_pointer,double rlist2,
 		 double rc2, double ecor, double ecut, double * vir ) {
    int i,j,k;
    double e = 0.0;
@@ -162,8 +204,6 @@ double total_e ( double * rx, double * ry, double * rz,
    double dx,dy,dz,r2;
 
    *vir=0.0;
-
-   double rlist=3.0;
 
    /* Zero the forces */
    for (i=0;i<N;i++) {
@@ -186,7 +226,7 @@ double total_e ( double * rx, double * ry, double * rz,
        for (j=i+1;j<N;j++) {
          nblist_pointer[i]=k;
 	 r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
-	 if (r2<rlist) {
+	 if (r2<rlist2) {
 	   nblist[k]=j;
 	   k++;
            calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
@@ -333,14 +373,13 @@ int main ( int argc, char * argv[] ) {
   double * vx, * vy, * vz;
   double * fx, * fy, * fz;
   int * ix, * iy, * iz;
-  int N=216,c,a;
+  int N=216;
   double L=0.0;
-  double rho=0.5, T=0.0, rc2 = 1.e20, vir, vir_old, vir_sum, pcor, V;
+  double rho=0.5, rc2 = 1.e20, vir, vir_old, V;
   double PE, KE, TE, ecor, ecut, T0=1.0, TE0;
   double rr3,dt=0.001, dt2;
-  int i,j,s;
+  int i,s;
   int nSteps = 10, fSamp=100;
-  int short_out=0;
   int use_e_corr=0;
   int unfold = 0;
 
@@ -348,6 +387,7 @@ int main ( int argc, char * argv[] ) {
   FILE * out;
   char * wrt_code_str = "w";
   char * init_cfg_file = NULL;
+  double rlist2=0;
   int nblist_frequenz=0;
 
   unsigned long int Seed = 23410981;
@@ -357,18 +397,17 @@ int main ( int argc, char * argv[] ) {
   for (i=1;i<argc;i++) {
     if (!strcmp(argv[i],"-N")) N=atoi(argv[++i]);
     else if (!strcmp(argv[i],"-rho")) rho=atof(argv[++i]);
-    else if (!strcmp(argv[i],"-T")) T=atof(argv[++i]);
     else if (!strcmp(argv[i],"-dt")) dt=atof(argv[++i]);
     else if (!strcmp(argv[i],"-rc")) rc2=atof(argv[++i]);
     else if (!strcmp(argv[i],"-ns")) nSteps = atoi(argv[++i]);
-    else if (!strcmp(argv[i],"-so")) short_out=1;
     else if (!strcmp(argv[i],"-T0")) T0=atof(argv[++i]);
     else if (!strcmp(argv[i],"-fs")) fSamp=atoi(argv[++i]);
     else if (!strcmp(argv[i],"-sf")) wrt_code_str = argv[++i];
     else if (!strcmp(argv[i],"-icf")) init_cfg_file = argv[++i];
     else if (!strcmp(argv[i],"-ecorr")) use_e_corr = 1;
     else if (!strcmp(argv[i],"-seed")) Seed = (unsigned long)atoi(argv[++i]);
-    else if (!strcmp(argv[i],"-seed")) nblist_frequenz = (int)atoi(argv[++i]);
+    else if (!strcmp(argv[i],"-rlist")) rlist2 = atof(argv[++i]);
+    else if (!strcmp(argv[i],"-uplist")) nblist_frequenz = atoi(argv[++i]);
     else if (!strcmp(argv[i],"-uf")) unfold = 1;
     else if (!strcmp(argv[i],"-h")) {
       usage(); exit(0);
@@ -386,7 +425,6 @@ int main ( int argc, char * argv[] ) {
   /* Compute the tail-corrections; assumes sigma and epsilon are both 1 */
   rr3 = 1.0/(rc2*rc2*rc2);
   ecor = use_e_corr?8*M_PI*rho*(rr3*rr3*rr3/9.0-rr3/3.0):0.0;
-  pcor = use_e_corr?16.0/3.0*M_PI*rho*rho*(2./3.*rr3*rr3*rr3-rr3):0.0;
   ecut = 4*(rr3*rr3*rr3*rr3-rr3*rr3);
 
   /* Compute the *squared* cutoff, reusing the variable rc2 */
@@ -399,9 +437,31 @@ int main ( int argc, char * argv[] ) {
   fprintf(stdout,"# NVE MD Simulation of a Lennard-Jones fluid\n");
   fprintf(stdout,"# L = %.5lf; rho = %.5lf; N = %i; rc = %.5lf\n",
 	  L,rho,N,sqrt(rc2));
-  fprintf(stdout,"# nSteps %i, seed %d, dt %.5lf\n",
+  fprintf(stdout,"# nSteps %i, seed %li, dt %.5lf\n",
 	  nSteps,Seed,dt);
   
+  int *nblist=NULL,*nblist_pointer=NULL;
+  double *rx0,*ry0,*rz0;
+  double skin2;
+  /* verlet list stuff */
+  if (rlist2 > 0) {
+    rlist2 *= rlist2;
+    if (rlist2 < rc2) {
+      fprintf(stderr,"-rlist must be bigger than -rc\n");
+      exit(1);
+    }
+    skin2 = sqrt(rlist2)-sqrt(rc2);
+    skin2 *= skin2;
+    fprintf(stdout,"# using Verlists with cutoff %.5f and update frequence %i\n",sqrt(rlist2),nblist_frequenz);
+    /* N*N is in most cases too much... */
+    nblist = (int *)malloc(N*N*sizeof(int));
+    nblist_pointer = (int *)malloc(N*sizeof(int));
+    /* old position saver*/
+    rx0 = (double*)malloc(N*sizeof(double));
+    ry0 = (double*)malloc(N*sizeof(double));
+    rz0 = (double*)malloc(N*sizeof(double));
+  }
+
   /* Seed the random number generator */
   srand48(Seed);
   
@@ -425,13 +485,6 @@ int main ( int argc, char * argv[] ) {
   fy = (double*)malloc(N*sizeof(double));
   fz = (double*)malloc(N*sizeof(double));
 
-  int *nblist=NULL,*nblist_pointer=NULL,update_nblist=0;
-  /* verlet list stuff */
-  if (nblist_frequenz > 0) {
-    nblist = (int *)malloc(N*N*sizeof(int));
-    nblist_pointer = (int *)malloc(N*sizeof(int));
-  }
-
   /* Generate initial positions on a cubic grid, 
      and measure initial energy */
   init(rx,ry,rz,vx,vy,vz,ix,iy,iz,N,L,T0,&KE,init_cfg_file);
@@ -440,7 +493,11 @@ int main ( int argc, char * argv[] ) {
   xyz_out(out,rx,ry,rz,vx,vy,vz,ix,iy,iz,L,N,16,1,unfold);
   fclose(out);
 
-  PE = total_e(rx,ry,rz,fx,fy,fz,N,L,1,nblist,nblist_pointer,rc2,ecor,ecut,&vir_old);
+  if (nblist) {
+    save_positions(rx,ry,rz,N,rx0,ry0,rz0);
+  }
+
+  PE = total_e(rx,ry,rz,fx,fy,fz,N,L,1,nblist,nblist_pointer,rc2,rlist2,ecor,ecut,&vir_old);
   TE0=PE+KE;
   
   fprintf(stdout,"# step PE KE TE drift T P\n");
@@ -463,14 +520,19 @@ int main ( int argc, char * argv[] ) {
       if (rz[i]<0.0) { rz[i]+=L; iz[i]--; }
       if (rz[i]>L)   { rz[i]-=L; iz[i]++; }
     }
-    /* Calculate forces */
-    if (s%nblist_frequenz==0) {
+    
+    int update_nblist;
+    if (nblist_frequenz==0) {
+      update_nblist=(max_moved_distance(rx,ry,rz,N,rx0,ry0,rz0) > skin2)?1:0; 
+    }
+    else if (s%nblist_frequenz==0) {
       update_nblist=1;
     }
     else {
       update_nblist=0;
     }
-    PE = total_e(rx,ry,rz,fx,fy,fz,N,L,update_nblist,nblist,nblist_pointer,rc2,ecor,ecut,&vir);
+    /* Calculate forces */
+    PE = total_e(rx,ry,rz,fx,fy,fz,N,L,update_nblist,nblist,nblist_pointer,rlist2,rc2,ecor,ecut,&vir);
       
     /* Second integration half-step */
     KE = 0.0;
@@ -491,4 +553,5 @@ int main ( int argc, char * argv[] ) {
       fclose(out);
     }
   }
+  return(0);
 }
