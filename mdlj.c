@@ -31,8 +31,8 @@ void usage ( void ) {
   fprintf(stdout,"\t -sf [a|w]\t\tAppend or write config output file\n");
   fprintf(stdout,"\t -icf [string]\t\tInitial configuration file\n");
   fprintf(stdout,"\t -seed [integer]\tRandom number generator seed\n");
-  fprintf(stdout,"\t -rlist [real]\tUse Verlet lists with this cutoff\n");
-  fprintf(stdout,"\t -uplist [int]\tVerlet lists update frequence (0=auto)\n");
+  fprintf(stdout,"\t -rlist [real]\t\tUse Verlet lists with this cutoff\n");
+  fprintf(stdout,"\t -uplist [int]\t\tVerlet lists update frequence (0=auto)\n");
   fprintf(stdout,"\t -uf          \t\tPrint unfolded coordinates in output files\n");
   fprintf(stdout,"\t -h           \t\tPrint this info\n");
 }
@@ -452,7 +452,7 @@ int main ( int argc, char * argv[] ) {
     }
     skin2 = sqrt(rlist2)-sqrt(rc2);
     skin2 *= skin2;
-    fprintf(stdout,"# using Verlists with cutoff %.5f and update frequence %i\n",sqrt(rlist2),nblist_frequenz);
+    fprintf(stdout,"# using Verlet lists with cutoff %.5f and update frequence %i\n",sqrt(rlist2),nblist_frequenz);
     /* N*N is in most cases too much... */
     nblist = (int *)malloc(N*N*sizeof(int));
     nblist_pointer = (int *)malloc(N*sizeof(int));
@@ -497,7 +497,7 @@ int main ( int argc, char * argv[] ) {
     save_positions(rx,ry,rz,N,rx0,ry0,rz0);
   }
 
-  PE = total_e(rx,ry,rz,fx,fy,fz,N,L,1,nblist,nblist_pointer,rc2,rlist2,ecor,ecut,&vir_old);
+  PE = total_e(rx,ry,rz,fx,fy,fz,N,L,1,nblist,nblist_pointer,rlist2,rc2,ecor,ecut,&vir_old);
   TE0=PE+KE;
 
   fprintf(stdout,"# step PE KE TE drift T P\n");
@@ -525,7 +525,8 @@ int main ( int argc, char * argv[] ) {
     if (nblist) {
       /* auto nblist update */
       if (nblist_frequenz==0) {
-        update_nblist=(max_moved_distance2(rx,ry,rz,N,rx0,ry0,rz0) > skin2)?1:0;
+	/*2* dx > skin */
+        update_nblist=(4*max_moved_distance2(rx,ry,rz,N,rx0,ry0,rz0) > skin2)?1:0;
       }
       else if (s%nblist_frequenz==0) {
         update_nblist=1;
