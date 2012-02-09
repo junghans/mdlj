@@ -16,27 +16,6 @@
 #include <string.h>
 #include <math.h>
 
-/* Prints usage information */
-void usage ( void ) {
-  fprintf(stdout,"mdlj usage:\n");
-  fprintf(stdout,"mdlj [options]\n\n");
-  fprintf(stdout,"Options:\n");
-  fprintf(stdout,"\t -N [integer]\t\tNumber of particles\n");
-  fprintf(stdout,"\t -rho [real]\t\tNumber density\n");
-  fprintf(stdout,"\t -dt [real]\t\tTime step\n");
-  fprintf(stdout,"\t -rc [real]\t\tCutoff radius\n");
-  fprintf(stdout,"\t -ns [real]\t\tNumber of integration steps\n");
-  fprintf(stdout,"\t -T0 [real]\t\tInitial temperature\n");
-  fprintf(stdout,"\t -fs [integer]\t\tSample frequency\n");
-  fprintf(stdout,"\t -sf [a|w]\t\tAppend or write config output file\n");
-  fprintf(stdout,"\t -icf [string]\t\tInitial configuration file\n");
-  fprintf(stdout,"\t -seed [integer]\tRandom number generator seed\n");
-  fprintf(stdout,"\t -rlist [real]\t\tUse Verlet lists with this cutoff\n");
-  fprintf(stdout,"\t -uplist [int]\t\tVerlet lists update frequence (0=auto)\n");
-  fprintf(stdout,"\t -uf          \t\tPrint unfolded coordinates in output files\n");
-  fprintf(stdout,"\t -h           \t\tPrint this info\n");
-}
-
 /* Writes the coordinates in XYZ format to the output stream fp.
    The integer "z" is the atomic number of the particles, required
    for the XYZ format. The array ix contains the number of x-dir
@@ -223,8 +202,8 @@ double total_e ( double * rx, double * ry, double * rz,
      /* update neighbor list and calc lj */
      k=0;
      for (i=0;i<(N-1);i++) {
+       nblist_pointer[i]=k;
        for (j=i+1;j<N;j++) {
-         nblist_pointer[i]=k;
 	 r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
 	 if (r2<rlist2) {
 	   nblist[k]=j;
@@ -409,8 +388,25 @@ int main ( int argc, char * argv[] ) {
     else if (!strcmp(argv[i],"-rlist")) rlist2 = atof(argv[++i]);
     else if (!strcmp(argv[i],"-uplist")) nblist_frequenz = atoi(argv[++i]);
     else if (!strcmp(argv[i],"-uf")) unfold = 1;
-    else if (!strcmp(argv[i],"-h")) {
-      usage(); exit(0);
+    else if ((!strcmp(argv[i],"-h"))||(!strcmp(argv[i],"--help"))) {
+      fprintf(stdout,"mdlj usage:\n");
+      fprintf(stdout,"mdlj [options]\n\n");
+      fprintf(stdout,"Options:\n");
+      fprintf(stdout,"\t -N [integer]\t\tNumber of particles (default %i)\n",N);
+      fprintf(stdout,"\t -rho [real]\t\tNumber density (default %f)\n",rho);
+      fprintf(stdout,"\t -dt [real]\t\tTime step (default %f)\n",dt);
+      fprintf(stdout,"\t -rc [real]\t\tCutoff radius (default %f)\n",rc2);
+      fprintf(stdout,"\t -ns [real]\t\tNumber of integration steps (default %i)\n",nSteps);
+      fprintf(stdout,"\t -T0 [real]\t\tInitial temperature (default %f)\n",T0);
+      fprintf(stdout,"\t -fs [integer]\t\tSample frequency (default %i)\n",fSamp);
+      fprintf(stdout,"\t -sf [a|w]\t\tAppend or write config output file (default %c)\n",wrt_code_str);
+      fprintf(stdout,"\t -icf [string]\t\tInitial configuration file (default %s)\n",init_cfg_file);
+      fprintf(stdout,"\t -seed [integer]\tRandom number generator seed (default %li)\n",Seed);
+      fprintf(stdout,"\t -rlist [real]\t\tUse Verlet lists with this cutoff (default %i)\n",rlist2);
+      fprintf(stdout,"\t -uplist [int]\t\tVerlet lists update frequence with 0=auto (default %i)\n",nblist_frequenz);
+      fprintf(stdout,"\t -uf          \t\tPrint unfolded coordinates in output files (default %i)\n",unfold);
+      fprintf(stdout,"\t -h           \t\tPrint this info\n");
+      exit(0);
     }
     else {
       fprintf(stderr,"Error: Command-line argument '%s' not recognized.\n",
