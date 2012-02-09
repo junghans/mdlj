@@ -1,4 +1,4 @@
-/* 
+/*
    Microcanonical Molecular Dynamics simulation of a Lennard-Jones fluid
    in a periodic boundary
 
@@ -6,7 +6,7 @@
    (c) 2012 Christoph Junghans
 
    Written for the course CHE 800-002, Molecular Simulation
-   Spring 0304, Drexel University, Department of Chemical 
+   Spring 0304, Drexel University, Department of Chemical
    Engineering, Philadelphia
 
    compile using "gcc -o mdlj mdlj.c -lm"
@@ -39,12 +39,12 @@ void usage ( void ) {
 
 /* Writes the coordinates in XYZ format to the output stream fp.
    The integer "z" is the atomic number of the particles, required
-   for the XYZ format. The array ix contains the number of x-dir 
+   for the XYZ format. The array ix contains the number of x-dir
    periodic boundary crossings a particle has performed; thus,
    the "unfolded" coordinate is rx[i]+ix[i]*L. */
-void xyz_out (FILE * fp, 
-	      double * rx, double * ry, double * rz, 
-	      double * vx, double * vy, double * vz, 
+void xyz_out (FILE * fp,
+	      double * rx, double * ry, double * rz,
+	      double * vx, double * vy, double * vz,
 	      int * ix, int * iy, int * iz, double L,
 	      int N, int z, int put_vel, int unfold) {
   int i;
@@ -61,8 +61,8 @@ void xyz_out (FILE * fp,
   }
 }
 
-int xyz_in (FILE * fp, double * rx, double * ry, double * rz, 
-	     double * vx, double * vy, double * vz, 
+int xyz_in (FILE * fp, double * rx, double * ry, double * rz,
+	     double * vx, double * vy, double * vz,
 	     int * N) {
   int i;
   int has_vel, dum;
@@ -105,7 +105,7 @@ void save_positions(double *rx,double *ry,double *rz,int N,
  * \param[in] rz0 array of z-coordinate of the position of all particles
  * \return square of the max distance moved
  */
-double max_moved_distance(double *rx,double *ry,double *rz, int N,
+double max_moved_distance2(double *rx,double *ry,double *rz, int N,
                         double *rx0,double *ry0,double *rz0) {
   double max2=0;
   int i;
@@ -132,7 +132,7 @@ double max_moved_distance(double *rx,double *ry,double *rz, int N,
  * \param[in] L box length
  * \return square shorted distance of all periodic images
  */
-double per_dist2(int i, int j, 
+double per_dist2(int i, int j,
     double *rx, double *ry, double *rz,
     double *dx,double *dy,double *dz,double L) {
   double  r2,hL=L/2.0;
@@ -140,11 +140,11 @@ double per_dist2(int i, int j,
   /* Periodic boundary conditions: Apply the minimum image
      convention; note that this is *not* used to truncate the
      potential as long as there an explicit cutoff. */
-  
+
   *dx  = (rx[i]-rx[j]);
   *dy  = (ry[i]-ry[j]);
   *dz  = (rz[i]-rz[j]);
-  
+
   if (*dx>hL)       *dx-=L;
   else if (*dx<-hL) *dx+=L;
   if (*dy>hL)       *dy-=L;
@@ -192,9 +192,9 @@ void calc_lj ( int i, int j, double dx, double dy, double dz, double r2,
 
 /** \brief algorithm for computing forces and potential energy.
  * algorithm for computing forces and potential energy. The virial
- *  is also computed and returned in *vir. 
+ *  is also computed and returned in *vir.
  */
-double total_e ( double * rx, double * ry, double * rz, 
+double total_e ( double * rx, double * ry, double * rz,
 		 double * fx, double * fy, double * fz,
 		 int N, double L, int update_nblist, int *nblist, int *nblist_pointer,double rlist2,
 		 double rc2, double ecor, double ecut, double * vir ) {
@@ -209,7 +209,7 @@ double total_e ( double * rx, double * ry, double * rz,
    for (i=0;i<N;i++) {
      fx[i]=fy[i]=fz[i]=0.0;
    }
-  
+
    if (!nblist) {
      /* do N square calculation */
      for (i=0;i<(N-1);i++) {
@@ -276,7 +276,7 @@ double drand_gaussian(double mean, double sigma) {
 }
 
 /* Initialize particle positions by assigning them
-   on a cubic grid, then scaling positions 
+   on a cubic grid, then scaling positions
    to achieve a given box size and thereby, volume,
    and density */
 void init ( double * rx, double * ry, double * rz,
@@ -289,7 +289,7 @@ void init ( double * rx, double * ry, double * rz,
   double T, fac;
   int n3=2;
   int vel_ok=0;
-  
+
   /* If icf has a value, assume it is the name of a file containing
      the input configuration in XYZ format */
   if (icf) {
@@ -308,7 +308,7 @@ void init ( double * rx, double * ry, double * rz,
     /* Find the lowest perfect cube, n3, greater than or equal to the
        number of particles */
     while ((n3*n3*n3)<n) n3++;
-  
+
     iix=iiy=iiz=0;
     /* Assign particle positions */
     for (i=0;i<n;i++) {
@@ -439,7 +439,7 @@ int main ( int argc, char * argv[] ) {
 	  L,rho,N,sqrt(rc2));
   fprintf(stdout,"# nSteps %i, seed %li, dt %.5lf\n",
 	  nSteps,Seed,dt);
-  
+
   int *nblist=NULL,*nblist_pointer=NULL;
   double *rx0,*ry0,*rz0;
   double skin2;
@@ -464,7 +464,7 @@ int main ( int argc, char * argv[] ) {
 
   /* Seed the random number generator */
   srand48(Seed);
-  
+
   /* Allocate the position arrays */
   rx = (double*)malloc(N*sizeof(double));
   ry = (double*)malloc(N*sizeof(double));
@@ -485,7 +485,7 @@ int main ( int argc, char * argv[] ) {
   fy = (double*)malloc(N*sizeof(double));
   fz = (double*)malloc(N*sizeof(double));
 
-  /* Generate initial positions on a cubic grid, 
+  /* Generate initial positions on a cubic grid,
      and measure initial energy */
   init(rx,ry,rz,vx,vy,vz,ix,iy,iz,N,L,T0,&KE,init_cfg_file);
   sprintf(fn,"%i.xyz",0);
@@ -499,7 +499,7 @@ int main ( int argc, char * argv[] ) {
 
   PE = total_e(rx,ry,rz,fx,fy,fz,N,L,1,nblist,nblist_pointer,rc2,rlist2,ecor,ecut,&vir_old);
   TE0=PE+KE;
-  
+
   fprintf(stdout,"# step PE KE TE drift T P\n");
 
   for (s=0;s<nSteps;s++) {
@@ -520,20 +520,20 @@ int main ( int argc, char * argv[] ) {
       if (rz[i]<0.0) { rz[i]+=L; iz[i]--; }
       if (rz[i]>L)   { rz[i]-=L; iz[i]++; }
     }
-    
-    int update_nblist;
-    if (nblist_frequenz==0) {
-      update_nblist=(max_moved_distance(rx,ry,rz,N,rx0,ry0,rz0) > skin2)?1:0; 
-    }
-    else if (s%nblist_frequenz==0) {
-      update_nblist=1;
-    }
-    else {
-      update_nblist=0;
+
+    int update_nblist=0;
+    if (nblist) {
+      /* auto nblist update */
+      if (nblist_frequenz==0) {
+        update_nblist=(max_moved_distance2(rx,ry,rz,N,rx0,ry0,rz0) > skin2)?1:0;
+      }
+      else if (s%nblist_frequenz==0) {
+        update_nblist=1;
+      }
     }
     /* Calculate forces */
     PE = total_e(rx,ry,rz,fx,fy,fz,N,L,update_nblist,nblist,nblist_pointer,rlist2,rc2,ecor,ecut,&vir);
-      
+
     /* Second integration half-step */
     KE = 0.0;
     for (i=0;i<N;i++) {
