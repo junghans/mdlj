@@ -547,7 +547,10 @@ int main ( int argc, char * argv[] ) {
       /* auto nblist update */
       if (nblist_frequenz==0) {
 	/*2* dx > skin */
-        update_nblist=(4*max_moved_distance2(rx,ry,rz,N,rx0,ry0,rz0) > skin2)?1:0;
+	if (4*max_moved_distance2(rx,ry,rz,N,rx0,ry0,rz0) > skin2) {
+	  update_nblist=1;
+          save_positions(rx,ry,rz,N,rx0,ry0,rz0);
+	}
       }
       else if (s%nblist_frequenz==0) {
         update_nblist=1;
