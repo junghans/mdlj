@@ -507,7 +507,7 @@ int main ( int argc, char * argv[] ) {
       fprintf(stdout,"\t -seed [integer]\tRandom number generator seed (default %li)\n",Seed);
       fprintf(stdout,"\t -rlist [real]\t\tUse neighbor lists with this cutoff (default %f)\n",rlist);
       fprintf(stdout,"\t -uplist [int]\t\tNeighbor lists update frequence with 0=auto (default %i)\n",nblist_frequenz);
-      fprintf(stdout,"\t -lc \t\tUse linked cells instead of Verlet lists\n");
+      fprintf(stdout,"\t -lc          \t\tUse linked cells instead of Verlet lists\n");
       fprintf(stdout,"\t -uf          \t\tPrint unfolded coordinates in output files (default %i)\n",unfold);
       fprintf(stdout,"\t -h           \t\tPrint this info\n");
       exit(0);
