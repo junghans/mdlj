@@ -5,9 +5,9 @@
    (c) 2004 Cameron F. Abrams
    (c) 2012 Christoph Junghans
 
-   Written for the course CHE 800-002, Molecular Simulation
-   Spring 0304, Drexel University, Department of Chemical
-   Engineering, Philadelphia
+   Initially written for the course CHE 800-002, Molecular 
+   Simulation Spring 0304, Drexel University, Department
+   of Chemical Engineering, Philadelphia
 
    compile using "gcc -o mdlj mdlj.c -lm"
 */
@@ -261,7 +261,7 @@ double drand_gaussian(double mean, double sigma) {
 void init ( double * rx, double * ry, double * rz,
 	    double * vx, double * vy, double * vz,
 	    int * ix, int * iy, int * iz,
-	    int n, double L, double T0,
+	    int * N, double L, double T0,
 	    double * KE, char * icf) {
   int i,iix,iiy,iiz;
   double cmvx=0.0,cmvy=0.0,cmvz=0.0;
@@ -274,7 +274,7 @@ void init ( double * rx, double * ry, double * rz,
   if (icf) {
     FILE * fp = fopen(icf,"r");
     if (fp) {
-      vel_ok = xyz_in(fp,rx,ry,rz,vx,vy,vz,&n);
+      vel_ok = xyz_in(fp,rx,ry,rz,vx,vy,vz,N);
     }
     else {
       fprintf(stderr,"# error: could not read %s\n",icf);
@@ -286,11 +286,11 @@ void init ( double * rx, double * ry, double * rz,
 
     /* Find the lowest perfect cube, n3, greater than or equal to the
        number of particles */
-    while ((n3*n3*n3)<n) n3++;
+    while ((n3*n3*n3)<*N) n3++;
 
     iix=iiy=iiz=0;
     /* Assign particle positions */
-    for (i=0;i<n;i++) {
+    for (i=0;i<*N;i++) {
       rx[i] = ((double)iix+0.5)*L/n3;
       ry[i] = ((double)iiy+0.5)*L/n3;
       rz[i] = ((double)iiz+0.5)*L/n3;
@@ -307,32 +307,32 @@ void init ( double * rx, double * ry, double * rz,
   }
   /* If no velocities yet assigned, randomly pick some */
   if (!vel_ok) {
-    for (i=0;i<n;i++) {
+    for (i=0;i<*N;i++) {
       vx[i]=drand_gaussian(0.0,1.0);
       vy[i]=drand_gaussian(0.0,1.0);
       vx[i]=drand_gaussian(0.0,1.0);
     }
   }
   /* Take away any center-of-mass drift; compute initial KE */
-  for (i=0;i<n;i++) {
+  for (i=0;i<*N;i++) {
     cmvx+=vx[i];
     cmvy+=vy[i];
     cmvz+=vz[i];
   }
   (*KE)=0;
-  for (i=0;i<n;i++) {
-    vx[i]-=cmvx/n;
-    vy[i]-=cmvy/n;
-    vz[i]-=cmvz/n;
+  for (i=0;i<*N;i++) {
+    vx[i]-=cmvx/(*N);
+    vy[i]-=cmvy/(*N);
+    vz[i]-=cmvz/(*N);
     (*KE)+=vx[i]*vx[i]+vy[i]*vy[i]+vz[i]*vz[i];
   }
   (*KE)*=0.5;
   /* if T0 is specified, scale velocities */
   if (T0>0.0) {
-    T=(*KE)/n*2./3.;
+    T=(*KE)/(*N)*2./3.;
     fac=sqrt(T0/T);
     (*KE)=0;
-    for (i=0;i<n;i++) {
+    for (i=0;i<*N;i++) {
       vx[i]*=fac;
       vy[i]*=fac;
       vz[i]*=fac;
@@ -341,9 +341,11 @@ void init ( double * rx, double * ry, double * rz,
     (*KE)*=0.5;
   }
   /* Initialize periodic boundary crossing counter arrays */
-  memset(ix,0,n*sizeof(int));
-  memset(iy,0,n*sizeof(int));
-  memset(iz,0,n*sizeof(int));
+  for (i=0;i<*N;i++) {
+    ix[i]=0;
+    iy[i]=0;
+    iz[i]=0;
+  }
 }
 
 int main ( int argc, char * argv[] ) {
@@ -366,7 +368,7 @@ int main ( int argc, char * argv[] ) {
   FILE * out;
   char * wrt_code_str = "w";
   char * init_cfg_file = NULL;
-  double rlist2=0;
+  double rlist=0,rlist2;
   int nblist_frequenz=0;
 
   unsigned long int Seed = 23410981;
@@ -385,7 +387,7 @@ int main ( int argc, char * argv[] ) {
     else if (!strcmp(argv[i],"-icf")) init_cfg_file = argv[++i];
     else if (!strcmp(argv[i],"-ecorr")) use_e_corr = 1;
     else if (!strcmp(argv[i],"-seed")) Seed = (unsigned long)atoi(argv[++i]);
-    else if (!strcmp(argv[i],"-rlist")) rlist2 = atof(argv[++i]);
+    else if (!strcmp(argv[i],"-rlist")) rlist = atof(argv[++i]);
     else if (!strcmp(argv[i],"-uplist")) nblist_frequenz = atoi(argv[++i]);
     else if (!strcmp(argv[i],"-uf")) unfold = 1;
     else if ((!strcmp(argv[i],"-h"))||(!strcmp(argv[i],"--help"))) {
@@ -399,10 +401,10 @@ int main ( int argc, char * argv[] ) {
       fprintf(stdout,"\t -ns [real]\t\tNumber of integration steps (default %i)\n",nSteps);
       fprintf(stdout,"\t -T0 [real]\t\tInitial temperature (default %f)\n",T0);
       fprintf(stdout,"\t -fs [integer]\t\tSample frequency (default %i)\n",fSamp);
-      fprintf(stdout,"\t -sf [a|w]\t\tAppend or write config output file (default %c)\n",wrt_code_str);
+      fprintf(stdout,"\t -sf [a|w]\t\tAppend or write config output file (default %s)\n",wrt_code_str);
       fprintf(stdout,"\t -icf [string]\t\tInitial configuration file (default %s)\n",init_cfg_file);
       fprintf(stdout,"\t -seed [integer]\tRandom number generator seed (default %li)\n",Seed);
-      fprintf(stdout,"\t -rlist [real]\t\tUse Verlet lists with this cutoff (default %i)\n",rlist2);
+      fprintf(stdout,"\t -rlist [real]\t\tUse Verlet lists with this cutoff (default %f)\n",rlist);
       fprintf(stdout,"\t -uplist [int]\t\tVerlet lists update frequence with 0=auto (default %i)\n",nblist_frequenz);
       fprintf(stdout,"\t -uf          \t\tPrint unfolded coordinates in output files (default %i)\n",unfold);
       fprintf(stdout,"\t -h           \t\tPrint this info\n");
@@ -440,15 +442,15 @@ int main ( int argc, char * argv[] ) {
   double *rx0,*ry0,*rz0;
   double skin2;
   /* verlet list stuff */
-  if (rlist2 > 0) {
-    rlist2 *= rlist2;
+  if (rlist > 0) {
+    rlist2 = rlist*rlist;
     if (rlist2 < rc2) {
       fprintf(stderr,"-rlist must be bigger than -rc\n");
       exit(1);
     }
-    skin2 = sqrt(rlist2)-sqrt(rc2);
+    skin2 = rlist-sqrt(rc2);
     skin2 *= skin2;
-    fprintf(stdout,"# using Verlet lists with cutoff %.5f and update frequence %i\n",sqrt(rlist2),nblist_frequenz);
+    fprintf(stdout,"# using Verlet lists with cutoff %.5f generated by %s search with update frequence %i\n",rlist,"grid",nblist_frequenz);
     /* N*N is in most cases too much... */
     nblist = (int *)malloc(N*N*sizeof(int));
     nblist_pointer = (int *)malloc(N*sizeof(int));
@@ -483,7 +485,7 @@ int main ( int argc, char * argv[] ) {
 
   /* Generate initial positions on a cubic grid,
      and measure initial energy */
-  init(rx,ry,rz,vx,vy,vz,ix,iy,iz,N,L,T0,&KE,init_cfg_file);
+  init(rx,ry,rz,vx,vy,vz,ix,iy,iz,&N,L,T0,&KE,init_cfg_file);
   sprintf(fn,"%i.xyz",0);
   out=fopen(fn,"w");
   xyz_out(out,rx,ry,rz,vx,vy,vz,ix,iy,iz,L,N,16,1,unfold);
@@ -528,6 +530,7 @@ int main ( int argc, char * argv[] ) {
         update_nblist=1;
       }
     }
+
     /* Calculate forces */
     PE = total_e(rx,ry,rz,fx,fy,fz,N,L,update_nblist,nblist,nblist_pointer,rlist2,rc2,ecor,ecut,&vir);
 
