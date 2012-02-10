@@ -356,7 +356,7 @@ int main ( int argc, char * argv[] ) {
   int * ix, * iy, * iz;
   int N=216;
   double L=0.0;
-  double rho=0.5, rc2 = 1.e20, vir, vir_old, V;
+  double rho=pow(1./1.05,3), rc2 = 1.12246, vir, vir_old, V;
   double PE, KE, TE, ecor, ecut, T0=1.0, TE0;
   double rr3,dt=0.001, dt2;
   int i,s;
