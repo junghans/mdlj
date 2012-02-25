@@ -558,9 +558,9 @@ nSteps,Seed,dt);
       fprintf(stderr,"-rlist must be bigger than -rc\n");
       exit(1);
     }
-    nblist->skin2 = pow(rlist-sqrt(rc2),2);
     if (nblist->linked_cell) {
       int ncells=(int)floor(L/nblist->cutoff);
+      nblist->skin2 = pow(L/ncells-sqrt(rc2),2);
       fprintf(stdout,"# using Linked cell lists with grid %i x %i x %i with update frequence %i\n",ncells,ncells,ncells,nblist->frequence);
       nblist->neighbors = (int *)malloc(N*sizeof(int));
       nblist->head = (int *)malloc(ncells*ncells*ncells*sizeof(int));
@@ -568,6 +568,7 @@ nSteps,Seed,dt);
     else {
       fprintf(stdout,"# using Verlet lists with cutoff %.5f with update frequence %i\n",nblist->cutoff,nblist->frequence);
       /* assume 25 neighbors and realloc later if needed */
+      nblist->skin2 = pow(rlist-sqrt(rc2),2);
       nblist->size= 25*N;
       nblist->neighbors = (int *)malloc(nblist->size*sizeof(int));
       nblist->head = (int *)malloc(N*sizeof(int));
