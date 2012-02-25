@@ -457,12 +457,13 @@ int main ( int argc, char * argv[] ) {
   int N=216;
   double L=0.0;
   double rho=pow(1./1.05,3), rc2 = 1.12246, vir, vir_old, V;
-  double PE, KE, TE, ecor, ecut, T0=1.0, TE0;
+  double PE, KE, TE, ecor, ecut, T0=1.0, TE0, T=1.0;
   double rr3,dt=0.001, dt2;
   int i,s;
   int nSteps = 10, fSamp=100;
   int use_e_corr=0;
   int unfold = 0;
+  double gamma=0;
 
   char fn[20];
   FILE * out;
@@ -482,6 +483,8 @@ int main ( int argc, char * argv[] ) {
     else if (!strcmp(argv[i],"-rc")) rc2=atof(argv[++i]);
     else if (!strcmp(argv[i],"-ns")) nSteps = atoi(argv[++i]);
     else if (!strcmp(argv[i],"-T0")) T0=atof(argv[++i]);
+    else if (!strcmp(argv[i],"-T")) T=atof(argv[++i]);
+    else if (!strcmp(argv[i],"-gamma")) gamma=atof(argv[++i]);
     else if (!strcmp(argv[i],"-fs")) fSamp=atoi(argv[++i]);
     else if (!strcmp(argv[i],"-sf")) wrt_code_str = argv[++i];
     else if (!strcmp(argv[i],"-icf")) init_cfg_file = argv[++i];
@@ -501,6 +504,8 @@ int main ( int argc, char * argv[] ) {
       fprintf(stdout,"\t -rc [real]\t\tCutoff radius (default %f)\n",rc2);
       fprintf(stdout,"\t -ns [real]\t\tNumber of integration steps (default %i)\n",nSteps);
       fprintf(stdout,"\t -T0 [real]\t\tInitial temperature (default %f)\n",T0);
+      fprintf(stdout,"\t -gamma [real]\t\tUse Langevin thermostat frition constant 0=off (default %f)\n",gamma);
+      fprintf(stdout,"\t -T [real]\t\tTemperature of the Langevin thermostat(default %f)\n",T);
       fprintf(stdout,"\t -fs [integer]\t\tSample frequency (default %i)\n",fSamp);
       fprintf(stdout,"\t -sf [a|w]\t\tAppend or write config output file (default %s)\n",wrt_code_str);
       fprintf(stdout,"\t -icf [string]\t\tInitial configuration file (default %s)\n",init_cfg_file);
@@ -577,6 +582,12 @@ nSteps,Seed,dt);
     fprintf(stdout,"# no neighbor lists\n");
   }
 
+  double langevin_const;
+  if (gamma > 0) {
+    fprintf(stdout,"# using Langevin thermostat for T=%f with gamma=%f\n",T,gamma);
+    langevin_const = sqrt(24.0*T*gamma/dt);
+  }
+
   /* Seed the random number generator */
   srand48(Seed);
 
@@ -615,7 +626,17 @@ nSteps,Seed,dt);
   PE = total_e(rx,ry,rz,fx,fy,fz,N,L,nblist,rc2,ecor,ecut,&vir_old);
   TE0=PE+KE;
 
-  fprintf(stdout,"# step PE KE TE drift T P\n");
+  /* Langevin thermostat */
+  /* in the initial md step the thermostat only acts over "half" dt */
+  if (gamma > 0) {
+    for (i=0;i<N;i++) {
+      fx[i]+= -gamma*vx[i] + langevin_const*sqrt(3)*(drand48()-0.5);
+      fy[i]+= -gamma*vy[i] + langevin_const*sqrt(3)*(drand48()-0.5);
+      fz[i]+= -gamma*vz[i] + langevin_const*sqrt(3)*(drand48()-0.5);
+    }
+  }
+
+  fprintf(stdout,"# step time PotE KinE TotE Tdrift T P\n");
 
   for (s=0;s<nSteps;s++) {
 
@@ -653,6 +674,15 @@ nSteps,Seed,dt);
     /* Calculate forces */
     PE = total_e(rx,ry,rz,fx,fy,fz,N,L,nblist,rc2,ecor,ecut,&vir);
 
+    /* Langevin thermostat */
+    if (gamma > 0) {
+      for (i=0;i<N;i++) {
+        fx[i]+= -gamma*vx[i] + langevin_const*(drand48()-0.5);
+        fy[i]+= -gamma*vy[i] + langevin_const*(drand48()-0.5);
+        fz[i]+= -gamma*vz[i] + langevin_const*(drand48()-0.5);
+      }
+    }
+    
     /* Second integration half-step */
     KE = 0.0;
     for (i=0;i<N;i++) {
