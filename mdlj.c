@@ -380,6 +380,7 @@ void init ( double * rx, double * ry, double * rz,
       fprintf(stderr,"# error: could not read %s\n",icf);
       exit(-1);
     }
+    fclose(fp);
   }
   /* Assign particles on a cubic lattice */
   else {
@@ -583,7 +584,7 @@ nSteps,Seed,dt);
     fprintf(stdout,"# no neighbor lists\n");
   }
 
-  double langevin_const;
+  double langevin_const = 0;
   if (gamma > 0) {
     fprintf(stdout,"# using Langevin thermostat for T=%f with gamma=%f\n",T,gamma);
     langevin_const = sqrt(24.0*T*gamma/dt);
@@ -703,5 +704,25 @@ nSteps,Seed,dt);
       fclose(out);
     }
   }
+  if(nblist) {
+    free(rx0);
+    free(ry0);
+    free(rz0);
+    free(nblist->neighbors);
+    free(nblist->head);
+    free(nblist);
+  }
+  free(rx);
+  free(ry);
+  free(rz);
+  free(vx);
+  free(vy);
+  free(vz);
+  free(ix);
+  free(iy);
+  free(iz);
+  free(fx);
+  free(fy);
+  free(fz);
   return(0);
 }
