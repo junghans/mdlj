@@ -192,21 +192,42 @@ void calc_lj ( int i, int j, double dx, double dy, double dz, double r2,
   }
 }
 
-/** \brief contains all information about the neighbor list */
+/** \brief contains all information about the verlet list */
 typedef struct{
-  int *vl_head; ///< point to first neighboring particles of the ith particle
-  int *vl_neighbors; ///<list of all neighboring paricles
-  int *lc_head; ///< point to first neighboring particles 
-  int *lc_neighbors; ///<list of all neighboring paricles
-  int rlc; ///< size of the cells for for use linked cell lists
-  int vl_size; ///< size of neighbors array
-  int frequence; ///<update frequenz
-  int vl_update; ///< if list should be updated
-  int lc_update; ///< if linked cell list should be updated
-  double rvl; //< verlet list cutoff
-  double rvl2; ///< square of the verlet list cutoff
-  double vl_skin2; ///<square of the verlet list skin (list cutoff - lj cutoff)
-  double lc_skin2; ///<square of the link cell list skin (cell size - lj cutoff)
+  int *head; ///< point to first neighboring particles of the ith particle
+  int *neighbors; ///<list of all neighboring paricles
+  int size; ///< size of neighbors array
+  int update; ///< if verlet list should be updated
+  double cutoff; ///< verlet list cutoff
+  double cutoff2; ///< square of the verlet list cutoff
+  double skin2; ///<square of the verlet list skin (list cutoff - lj cutoff)
+  double *rx0; ///<array of x-coordinate of the old position of all particles
+  double *ry0; ///<array of y-coordinate of the old position of all particles
+  double *rz0; ///<array of z-coordinate of the old position of all particles
+} vlist_t;
+
+/** \brief contains all information about the linked cell list */
+typedef struct{
+  int *head; ///< point to first neighboring particles of the ith cell
+  int *neighbors; ///<list of all neighboring paricles
+  int update; ///< if verlet list should be updated
+  int ncells; ///< number of cell in each direction
+  int ncells2; ///< square of number of cell in each direction
+  int ncells3; ///< total of number of cells (ncells**3)
+  int left; ///< if there is a neighbor on the left
+  int right; ///< if there is a neighbor on the right 
+  double lcell; ///< length of a cell (effective cutoff)
+  double cutoff; ///< list cutoff, round up from user input
+  double skin2; ///<square of the linked cell list skin (list cutoff - lj cutoff)
+  double *rx0; ///<array of x-coordinate of the old position of all particles
+  double *ry0; ///<array of y-coordinate of the old position of all particles
+  double *rz0; ///<array of z-coordinate of the old position of all particles
+} lclist_t;
+
+  /** \brief contains all information about the neighbor list */
+typedef struct{
+  vlist_t *vl; ///< pointer to verlet list struct
+  lclist_t *lc; ///< pointer to linked cell list struct
 } nblist_t;
 
 /** \brief algorithm for computing forces and potential energy.
@@ -237,56 +258,49 @@ double total_e ( double * rx, double * ry, double * rz,
          calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
        }
      }
+     return e+N*ecor;
    }
-   else if (nblist->rlc > 0) {
-     int ncells=(int)floor(L/nblist->rlc);
-     double lcell=L/ncells;
-     int ncells2=ncells*ncells;
+   else if (nblist->lc) {
      int cx,cy,cz,nbx,nby,nbz,c;
-     if (nblist->lc_update) {
-       for(c=0;c<ncells2*ncells;c++){
-         nblist->lc_head[c]=-1;
+     if (nblist->lc->update) {
+       for(c=0;c<nblist->lc->ncells3;c++){
+         nblist->lc->head[c]=-1;
        }
        /* this is an array implementation of a linked list*/
        for(i=0;i<N;i++) {
-         cx=(int)floor(rx[i]/lcell);
-         cy=(int)floor(ry[i]/lcell);
-         cz=(int)floor(rz[i]/lcell);
-         c=cx+cy*ncells+cz*ncells2;
-         nblist->lc_neighbors[i] = nblist->lc_head[c];
-         nblist->lc_head[c] = i;
+         cx=(int)floor(rx[i]/nblist->lc->lcell);
+         cy=(int)floor(ry[i]/nblist->lc->lcell);
+         cz=(int)floor(rz[i]/nblist->lc->lcell);
+         c=cx+cy*nblist->lc->ncells+cz*nblist->lc->ncells2;
+         nblist->lc->neighbors[i] = nblist->lc->head[c];
+         nblist->lc->head[c] = i;
        }
-       nblist->lc_update=0;
-     }
-     int left=1,right=1;
-     if (ncells == 1) {
-       left=right=0;
-     }
-     else if(ncells == 2 ) {
-       left=0;
+       nblist->lc->update=0;
      }
      /* loop of cells in 3dim */
-     for(cx=0;cx<ncells;cx++){
-       for(cy=0;cy<ncells;cy++){
-         for(cz=0;cz<ncells;cz++){
-           c=cx+cy*ncells+cz*ncells2;
+     for(cx=0;cx<nblist->lc->ncells;cx++){
+       for(cy=0;cy<nblist->lc->ncells;cy++){
+         for(cz=0;cz<nblist->lc->ncells;cz++){
+           c=cx+cy*nblist->lc->ncells+cz*nblist->lc->ncells2;
            /* loop over all neighbor cell of c */
-           for (nbx=cx-left;nbx<=cx+right;nbx++){
-             for (nby=cy-left;nby<=cy+right;nby++){
-                 for (nbz=cz-left;nbz<=cz+right;nbz++){
+           for (nbx=cx-nblist->lc->left;nbx<=cx+nblist->lc->right;nbx++){
+             for (nby=cy-nblist->lc->left;nby<=cy+nblist->lc->right;nby++){
+                 for (nbz=cz-nblist->lc->left;nbz<=cz+nblist->lc->right;nbz++){
                  /* calc cell number with respect to periodicity */
-                 int nb=((nbx+ncells)%ncells)+((nby+ncells)%ncells)*ncells+((nbz+ncells)%ncells)*ncells2;
-                 i=nblist->lc_head[c];
+                 int nb=((nbx+nblist->lc->ncells)%nblist->lc->ncells)
+		   +((nby+nblist->lc->ncells)%nblist->lc->ncells)*nblist->lc->ncells
+		   +((nbz+nblist->lc->ncells)%nblist->lc->ncells)*nblist->lc->ncells2;
+                 i=nblist->lc->head[c];
                  while ( i != -1 ) {
-                   j=nblist->lc_head[nb];
+                   j=nblist->lc->head[nb];
                    while ( j != -1 ) {
                      if ( i < j ) {
                        r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
                        calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
                      }
-                     j = nblist->lc_neighbors[j];
+                     j = nblist->lc->neighbors[j];
                    }
-                   i = nblist->lc_neighbors[i];
+                   i = nblist->lc->neighbors[i];
                  }
                }
              }
@@ -295,33 +309,33 @@ double total_e ( double * rx, double * ry, double * rz,
        }
      }
    }
-   else if (nblist->vl_update) {
+   else if (nblist->vl->update) {
      /* update neighbor list and calc lj */
      k=0;
      for (i=0;i<(N-1);i++) {
-       nblist->vl_head[i]=k;
+       nblist->vl->head[i]=k;
        for (j=i+1;j<N;j++) {
          r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
-         if (r2<nblist->rvl2) {
-           if(k == nblist->vl_size ) {
+         if (r2 < nblist->vl->cutoff2) {
+           if(k == nblist->vl->size ) {
              /* double the size */
-             nblist->vl_size*=2;
-             nblist->vl_neighbors=(int *)realloc(nblist->vl_neighbors,nblist->vl_size*sizeof(int));
+             nblist->vl->size*=2;
+             nblist->vl->neighbors=(int *)realloc(nblist->vl->neighbors,nblist->vl->size*sizeof(int));
            }
-           nblist->vl_neighbors[k]=j;
+           nblist->vl->neighbors[k]=j;
            k++;
            calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
          }
        }
      }
-     nblist->vl_head[N-1]=k;
-     nblist->vl_update=0;
+     nblist->vl->head[N-1]=k;
+     nblist->vl->update=0;
    }
    else {
      /* use existing neighbor list */
      for (i=0;i<(N-1);i++) {
-       for (k=nblist->vl_head[i];k<nblist->vl_head[i+1];k++) {
-         j=nblist->vl_neighbors[k];
+       for (k=nblist->vl->head[i];k<nblist->vl->head[i+1];k++) {
+         j=nblist->vl->neighbors[k];
          r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
          calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
        }
@@ -475,7 +489,6 @@ int main ( int argc, char * argv[] ) {
   char * init_cfg_file = NULL;
   double rvl=0;
   double rlc=0;
-  int nblist_frequenz=0;
 
   unsigned long int Seed = 23410981;
 
@@ -496,7 +509,6 @@ int main ( int argc, char * argv[] ) {
     else if (!strcmp(argv[i],"-ecorr")) use_e_corr = 1;
     else if (!strcmp(argv[i],"-seed")) Seed = (unsigned long)atoi(argv[++i]);
     else if (!strcmp(argv[i],"-rvl")) rvl = atof(argv[++i]);
-    else if (!strcmp(argv[i],"-uplist")) nblist_frequenz = atoi(argv[++i]);
     else if (!strcmp(argv[i],"-rlc")) rlc = atof(argv[++i]);
     else if (!strcmp(argv[i],"-uf")) unfold = 1;
     else if ((!strcmp(argv[i],"-h"))||(!strcmp(argv[i],"--help"))) {
@@ -516,7 +528,6 @@ int main ( int argc, char * argv[] ) {
       fprintf(stdout,"\t -icf [string]\t\tInitial configuration file (default %s)\n",init_cfg_file);
       fprintf(stdout,"\t -seed [integer]\tRandom number generator seed (default %li)\n",Seed);
       fprintf(stdout,"\t -rvl [real]\t\tUse neighbor lists with this cutoff (default %f)\n",rvl);
-      fprintf(stdout,"\t -uplist [int]\t\tNeighbor lists update frequence with 0=auto (default %i)\n",nblist_frequenz);
       fprintf(stdout,"\t -rlc [read]  \t\tUse linked cells with this size (default %f)\n",rlc);
       fprintf(stdout,"\t -uf          \t\tPrint unfolded coordinates in output files (default %i)\n",unfold);
       fprintf(stdout,"\t -h           \t\tPrint this info\n");
@@ -550,12 +561,9 @@ int main ( int argc, char * argv[] ) {
   fprintf(stdout,"# nSteps %i, seed %li, dt %.5lf\n", nSteps,Seed,dt);
 
   nblist_t *nblist=NULL;
-  double *vl_rx0,*vl_ry0,*vl_rz0;
-  double *lc_rx0,*lc_ry0,*lc_rz0;
   
   if (( rvl > 0 ) || ( rlc > 0 )){
     nblist=(nblist_t *)malloc(sizeof(nblist_t));
-    nblist->frequence = nblist_frequenz;
   }
   if (( rvl > 0 ) && ( rlc > 0 )){
     fprintf(stderr,"-rvl together with -rlc not implemented yet\n");
@@ -564,43 +572,56 @@ int main ( int argc, char * argv[] ) {
   
   /* verlet list stuff */
   if (rvl > 0) {
-    nblist->rvl = rvl;
-    nblist->rvl2 = rvl*rvl;
-    if (nblist->rvl2 < rc2) {
+    nblist->vl=(vlist_t *)malloc(sizeof(vlist_t));
+    nblist->vl->cutoff = rvl;
+    nblist->vl->cutoff2 = rvl*rvl;
+    if (nblist->vl->cutoff2 < rc2) {
       fprintf(stderr,"-rvl must be bigger than -rc\n");
       exit(1);
     }
-    fprintf(stdout,"# using Verlet lists with cutoff %.5f with update frequence %i\n",nblist->rvl,nblist->frequence);
+    fprintf(stdout,"# using Verlet lists with cutoff %.5f\n",nblist->vl->cutoff);
     /* assume 25 neighbors and realloc later if needed */
-    nblist->vl_skin2 = pow(rvl-sqrt(rc2),2);
-    nblist->vl_size= 25*N;
-    nblist->vl_neighbors = (int *)malloc(nblist->vl_size*sizeof(int));
-    nblist->vl_head = (int *)malloc(N*sizeof(int));
+    nblist->vl->skin2 = pow(rvl-sqrt(rc2),2);
+    nblist->vl->size= 25*N;
+    nblist->vl->neighbors = (int *)malloc(nblist->vl->size*sizeof(int));
+    nblist->vl->head = (int *)malloc(N*sizeof(int));
     /* always update nblist one time */
-    nblist->vl_update=1;
+    nblist->vl->update=1;
     /* old position saver*/
-    vl_rx0 = (double*)malloc(N*sizeof(double));
-    vl_ry0 = (double*)malloc(N*sizeof(double));
-    vl_rz0 = (double*)malloc(N*sizeof(double));
+    nblist->vl->rx0 = (double*)malloc(N*sizeof(double));
+    nblist->vl->ry0 = (double*)malloc(N*sizeof(double));
+    nblist->vl->rz0 = (double*)malloc(N*sizeof(double));
   } 
 
   if ( rlc > 0 ) {
-    nblist->rlc = rlc;
-    int ncells=(int)floor(L/nblist->rlc);
-    nblist->lc_skin2 = pow(L/ncells-sqrt(rc2),2);
+    nblist->lc=(lclist_t *)malloc(sizeof(lclist_t));
+    nblist->lc->cutoff = rlc;
+    nblist->lc->ncells=(int)floor(L/rlc);
+    nblist->lc->ncells2=nblist->lc->ncells * nblist->lc->ncells;
+    nblist->lc->ncells3=nblist->lc->ncells * nblist->lc->ncells2;
+    nblist->lc->left=nblist->lc->right=1;
+    if (nblist->lc->ncells==1){
+      nblist->lc->left=nblist->lc->right=0;
+    }
+    else if (nblist->lc->ncells==2){
+      nblist->lc->left=0;
+    }
+    nblist->lc->lcell = L/nblist->lc->ncells;
+    nblist->lc->skin2 = pow(nblist->lc->lcell-sqrt(rc2),2);
     if (rlc*rlc < rc2) {
       fprintf(stderr,"-rlc must be bigger than -rc\n");
       exit(1);
     }
-    fprintf(stdout,"# using Linked cell lists with grid %i x %i x %i with update frequence %i\n",ncells,ncells,ncells,nblist->frequence);
-    nblist->lc_neighbors = (int *)malloc(N*sizeof(int));
-    nblist->lc_head = (int *)malloc(ncells*ncells*ncells*sizeof(int));
+    fprintf(stdout,"# using Linked cell lists with grid %i x %i x %i\n",nblist->lc->ncells,nblist->lc->ncells,nblist->lc->ncells);
+    fprintf(stdout,"# skin2 %f lcell %f\n",nblist->lc->skin2, nblist->lc->lcell);
+    nblist->lc->neighbors = (int *)malloc(N*sizeof(int));
+    nblist->lc->head = (int *)malloc(nblist->lc->ncells3*sizeof(int));
     /* always update nblist one time */
-    nblist->lc_update=1;
+    nblist->lc->update=1;
     /* old position saver*/
-    lc_rx0 = (double*)malloc(N*sizeof(double));
-    lc_ry0 = (double*)malloc(N*sizeof(double));
-    lc_rz0 = (double*)malloc(N*sizeof(double));
+    nblist->lc->rx0 = (double*)malloc(N*sizeof(double));
+    nblist->lc->ry0 = (double*)malloc(N*sizeof(double));
+    nblist->lc->rz0 = (double*)malloc(N*sizeof(double));
   }
 
   if(!nblist){
@@ -644,11 +665,11 @@ int main ( int argc, char * argv[] ) {
   xyz_out(out,rx,ry,rz,vx,vy,vz,ix,iy,iz,L,N,16,1,unfold);
   fclose(out);
 
-  if (nblist->rvl > 0) {
-    save_positions(rx,ry,rz,N,vl_rx0,vl_ry0,vl_rz0);
+  if (nblist->vl) {
+    save_positions(rx,ry,rz,N,nblist->vl->rx0,nblist->vl->ry0,nblist->vl->rz0);
   }
-  if (nblist->rlc > 0) {
-    save_positions(rx,ry,rz,N,lc_rx0,lc_ry0,lc_rz0);
+  if (nblist->lc) {
+    save_positions(rx,ry,rz,N,nblist->lc->rx0,nblist->lc->ry0,nblist->lc->rz0);
   }
 
   PE = total_e(rx,ry,rz,fx,fy,fz,N,L,nblist,rc2,ecor,ecut,&vir_old);
@@ -686,27 +707,22 @@ int main ( int argc, char * argv[] ) {
     }
 
     if (nblist) {
-      /* auto nblist update */
-      if (nblist->frequence==0) {
-        /*2* dx > skin */
-        if ((nblist->rlc > 0)&&(nblist->lc_update==0)&&(4*max_moved_distance2(rx,ry,rz,N,lc_rx0,lc_ry0,lc_rz0) > nblist->lc_skin2)) {
-          nblist->lc_update=1;
-          save_positions(rx,ry,rz,N,lc_rx0,lc_ry0,lc_rz0);
-	  /* trigger verlet list update too */
-	  if (nblist->rvl > 0){
-            nblist->vl_update=1;
-            save_positions(rx,ry,rz,N,vl_rx0,vl_ry0,vl_rz0);
-	  }
-        }
-        if ((nblist->rvl>0)&&(nblist->vl_update==0)&&(4*max_moved_distance2(rx,ry,rz,N,vl_rx0,vl_ry0,vl_rz0) > nblist->lc_skin2)) {
-          nblist->vl_update=1;
-          save_positions(rx,ry,rz,N,vl_rx0,vl_ry0,vl_rz0);
+      /* auto nblist update only */
+      /*2* dx > skin */
+      if ((nblist->lc)&&(nblist->lc->update==0)&&
+	  (4*max_moved_distance2(rx,ry,rz,N,nblist->lc->rx0,nblist->lc->ry0,nblist->lc->rz0) > nblist->lc->skin2)) {
+        nblist->lc->update=1;
+        save_positions(rx,ry,rz,N,nblist->lc->rx0,nblist->lc->ry0,nblist->lc->rz0);
+        /* trigger verlet list update too */
+        if (nblist->vl){
+          nblist->vl->update=1;
+          save_positions(rx,ry,rz,N,nblist->vl->rx0,nblist->vl->ry0,nblist->vl->rz0);
         }
       }
-      else if (s%nblist->frequence==0) {
-	/* fixme once vlist and lc can be used together */
-        nblist->vl_update=1;
-        nblist->lc_update=1;
+      if ((nblist->vl)&&(nblist->vl->update==0)&&
+	  (4*max_moved_distance2(rx,ry,rz,N,nblist->vl->rx0,nblist->vl->ry0,nblist->vl->rz0) > nblist->vl->skin2)) {
+        nblist->vl->update=1;
+        save_positions(rx,ry,rz,N,nblist->vl->rx0,nblist->vl->ry0,nblist->vl->rz0);
       }
     }
 
@@ -742,19 +758,21 @@ int main ( int argc, char * argv[] ) {
     }
   }
   if(nblist) {
-    if(nblist->rvl > 0 ){
-      free(nblist->vl_neighbors);
-      free(nblist->vl_head);
-      free(vl_rx0);
-      free(vl_ry0);
-      free(vl_rz0);
+    if(nblist->vl){
+      free(nblist->vl->neighbors);
+      free(nblist->vl->head);
+      free(nblist->vl->rx0);
+      free(nblist->vl->ry0);
+      free(nblist->vl->rz0);
+      free(nblist->vl);
     }
-    if(nblist->rlc > 0 ){
-      free(nblist->lc_neighbors);
-      free(nblist->lc_head);
-      free(lc_rx0);
-      free(lc_ry0);
-      free(lc_rz0);
+    if(nblist->lc){
+      free(nblist->lc->neighbors);
+      free(nblist->lc->head);
+      free(nblist->lc->rx0);
+      free(nblist->lc->ry0);
+      free(nblist->lc->rz0);
+      free(nblist->lc);
     }
     free(nblist);
   }
