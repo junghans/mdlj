@@ -9,7 +9,7 @@
    compile using "gcc -o mdlj mdlj.c -lm"
 
 Copyright (c) 2004, Cameron F. Abrams & Board of Trustees of Drexel University
-Copyright (c) 2012, Christoph Junghans
+Copyright (c) 2012,2014 Christoph Junghans
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -194,18 +194,18 @@ void calc_lj ( int i, int j, double dx, double dy, double dz, double r2,
 
 /** \brief contains all information about the neighbor list */
 typedef struct{
-  int *head; ///< point to first neighboring particles
-  int *neighbors; ///<list of all neighboring paricles
+  int *vl_head; ///< point to first neighboring particles of the ith particle
+  int *vl_neighbors; ///<list of all neighboring paricles
   int *lc_head; ///< point to first neighboring particles 
   int *lc_neighbors; ///<list of all neighboring paricles
   int rlc; ///< size of the cells for for use linked cell lists
-  int size; ///< size of neighbors array
+  int vl_size; ///< size of neighbors array
   int frequence; ///<update frequenz
-  int update; ///< if list should be updated
+  int vl_update; ///< if list should be updated
   int lc_update; ///< if linked cell list should be updated
   double rvl; //< verlet list cutoff
   double rvl2; ///< square of the verlet list cutoff
-  double skin2; ///<square of the verlet list skin (list cutoff - lj cutoff)
+  double vl_skin2; ///<square of the verlet list skin (list cutoff - lj cutoff)
   double lc_skin2; ///<square of the link cell list skin (cell size - lj cutoff)
 } nblist_t;
 
@@ -295,33 +295,33 @@ double total_e ( double * rx, double * ry, double * rz,
        }
      }
    }
-   else if (nblist->update) {
+   else if (nblist->vl_update) {
      /* update neighbor list and calc lj */
      k=0;
      for (i=0;i<(N-1);i++) {
-       nblist->head[i]=k;
+       nblist->vl_head[i]=k;
        for (j=i+1;j<N;j++) {
          r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
          if (r2<nblist->rvl2) {
-           if(k == nblist->size ) {
+           if(k == nblist->vl_size ) {
              /* double the size */
-             nblist->size*=2;
-             nblist->neighbors=(int *)realloc(nblist->neighbors,nblist->size*sizeof(int));
+             nblist->vl_size*=2;
+             nblist->vl_neighbors=(int *)realloc(nblist->vl_neighbors,nblist->vl_size*sizeof(int));
            }
-           nblist->neighbors[k]=j;
+           nblist->vl_neighbors[k]=j;
            k++;
            calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
          }
        }
      }
-     nblist->head[N-1]=k;
-     nblist->update=0;
+     nblist->vl_head[N-1]=k;
+     nblist->vl_update=0;
    }
    else {
      /* use existing neighbor list */
      for (i=0;i<(N-1);i++) {
-       for (k=nblist->head[i];k<nblist->head[i+1];k++) {
-         j=nblist->neighbors[k];
+       for (k=nblist->vl_head[i];k<nblist->vl_head[i+1];k++) {
+         j=nblist->vl_neighbors[k];
          r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
          calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
        }
@@ -550,7 +550,8 @@ int main ( int argc, char * argv[] ) {
   fprintf(stdout,"# nSteps %i, seed %li, dt %.5lf\n", nSteps,Seed,dt);
 
   nblist_t *nblist=NULL;
-  double *rx0,*ry0,*rz0;
+  double *vl_rx0,*vl_ry0,*vl_rz0;
+  double *lc_rx0,*lc_ry0,*lc_rz0;
   
   if (( rvl > 0 ) || ( rlc > 0 )){
     nblist=(nblist_t *)malloc(sizeof(nblist_t));
@@ -571,12 +572,16 @@ int main ( int argc, char * argv[] ) {
     }
     fprintf(stdout,"# using Verlet lists with cutoff %.5f with update frequence %i\n",nblist->rvl,nblist->frequence);
     /* assume 25 neighbors and realloc later if needed */
-    nblist->skin2 = pow(rvl-sqrt(rc2),2);
-    nblist->size= 25*N;
-    nblist->neighbors = (int *)malloc(nblist->size*sizeof(int));
-    nblist->head = (int *)malloc(N*sizeof(int));
+    nblist->vl_skin2 = pow(rvl-sqrt(rc2),2);
+    nblist->vl_size= 25*N;
+    nblist->vl_neighbors = (int *)malloc(nblist->vl_size*sizeof(int));
+    nblist->vl_head = (int *)malloc(N*sizeof(int));
     /* always update nblist one time */
-    nblist->update=1;
+    nblist->vl_update=1;
+    /* old position saver*/
+    vl_rx0 = (double*)malloc(N*sizeof(double));
+    vl_ry0 = (double*)malloc(N*sizeof(double));
+    vl_rz0 = (double*)malloc(N*sizeof(double));
   } 
 
   if ( rlc > 0 ) {
@@ -592,14 +597,13 @@ int main ( int argc, char * argv[] ) {
     nblist->lc_head = (int *)malloc(ncells*ncells*ncells*sizeof(int));
     /* always update nblist one time */
     nblist->lc_update=1;
+    /* old position saver*/
+    lc_rx0 = (double*)malloc(N*sizeof(double));
+    lc_ry0 = (double*)malloc(N*sizeof(double));
+    lc_rz0 = (double*)malloc(N*sizeof(double));
   }
 
-  if(nblist){
-    /* old position saver*/
-    rx0 = (double*)malloc(N*sizeof(double));
-    ry0 = (double*)malloc(N*sizeof(double));
-    rz0 = (double*)malloc(N*sizeof(double));
-  } else {
+  if(!nblist){
     fprintf(stdout,"# no neighbor lists\n");
   }
 
@@ -640,8 +644,11 @@ int main ( int argc, char * argv[] ) {
   xyz_out(out,rx,ry,rz,vx,vy,vz,ix,iy,iz,L,N,16,1,unfold);
   fclose(out);
 
-  if (nblist) {
-    save_positions(rx,ry,rz,N,rx0,ry0,rz0);
+  if (nblist->rvl > 0) {
+    save_positions(rx,ry,rz,N,vl_rx0,vl_ry0,vl_rz0);
+  }
+  if (nblist->rlc > 0) {
+    save_positions(rx,ry,rz,N,lc_rx0,lc_ry0,lc_rz0);
   }
 
   PE = total_e(rx,ry,rz,fx,fy,fz,N,L,nblist,rc2,ecor,ecut,&vir_old);
@@ -681,20 +688,24 @@ int main ( int argc, char * argv[] ) {
     if (nblist) {
       /* auto nblist update */
       if (nblist->frequence==0) {
-	double max2=max_moved_distance2(rx,ry,rz,N,rx0,ry0,rz0);
         /*2* dx > skin */
-        if (4*max2 > nblist->lc_skin2) {
+        if ((nblist->rlc > 0)&&(nblist->lc_update==0)&&(4*max_moved_distance2(rx,ry,rz,N,lc_rx0,lc_ry0,lc_rz0) > nblist->lc_skin2)) {
           nblist->lc_update=1;
-          save_positions(rx,ry,rz,N,rx0,ry0,rz0);
+          save_positions(rx,ry,rz,N,lc_rx0,lc_ry0,lc_rz0);
+	  /* trigger verlet list update too */
+	  if (nblist->rvl > 0){
+            nblist->vl_update=1;
+            save_positions(rx,ry,rz,N,vl_rx0,vl_ry0,vl_rz0);
+	  }
         }
-        if (4*max2 > nblist->skin2) {
-          nblist->update=1;
-          save_positions(rx,ry,rz,N,rx0,ry0,rz0);
+        if ((nblist->rvl>0)&&(nblist->vl_update==0)&&(4*max_moved_distance2(rx,ry,rz,N,vl_rx0,vl_ry0,vl_rz0) > nblist->lc_skin2)) {
+          nblist->vl_update=1;
+          save_positions(rx,ry,rz,N,vl_rx0,vl_ry0,vl_rz0);
         }
       }
       else if (s%nblist->frequence==0) {
 	/* fixme once vlist and lc can be used together */
-        nblist->update=1;
+        nblist->vl_update=1;
         nblist->lc_update=1;
       }
     }
@@ -731,16 +742,19 @@ int main ( int argc, char * argv[] ) {
     }
   }
   if(nblist) {
-    free(rx0);
-    free(ry0);
-    free(rz0);
     if(nblist->rvl > 0 ){
-      free(nblist->neighbors);
-      free(nblist->head);
+      free(nblist->vl_neighbors);
+      free(nblist->vl_head);
+      free(vl_rx0);
+      free(vl_ry0);
+      free(vl_rz0);
     }
     if(nblist->rlc > 0 ){
       free(nblist->lc_neighbors);
       free(nblist->lc_head);
+      free(lc_rx0);
+      free(lc_ry0);
+      free(lc_rz0);
     }
     free(nblist);
   }
