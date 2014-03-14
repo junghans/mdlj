@@ -2,7 +2,7 @@
    Microcanonical Molecular Dynamics simulation of a Lennard-Jones fluid
    in a periodic boundary
 
-   Initially written for the course CHE 800-002, Molecular 
+   Initially written for the course CHE 800-002, Molecular
    Simulation Spring 0304, Drexel University, Department
    of Chemical Engineering, Philadelphia
 
@@ -215,7 +215,7 @@ typedef struct{
   int ncells2; ///< square of number of cell in each direction
   int ncells3; ///< total of number of cells (ncells**3)
   int left; ///< if there is a neighbor on the left
-  int right; ///< if there is a neighbor on the right 
+  int right; ///< if there is a neighbor on the right
   double lcell; ///< length of a cell (effective cutoff)
   double cutoff; ///< list cutoff, round up from user input
   double skin2; ///<square of the linked cell list skin (list cutoff - lj cutoff)
@@ -239,6 +239,7 @@ double total_e ( double * rx, double * ry, double * rz,
                  int N, double L, nblist_t *nblist,
                  double rc2, double ecor, double ecut, double * vir ) {
    int i,j,k;
+   int cx,cy,cz,nbx,nby,nbz,c;
    double e = 0.0;
 
    double dx,dy,dz,r2;
@@ -260,23 +261,26 @@ double total_e ( double * rx, double * ry, double * rz,
      }
      return e+N*ecor;
    }
-   else if (nblist->lc) {
-     int cx,cy,cz,nbx,nby,nbz,c;
-     if (nblist->lc->update) {
-       for(c=0;c<nblist->lc->ncells3;c++){
-         nblist->lc->head[c]=-1;
-       }
-       /* this is an array implementation of a linked list*/
-       for(i=0;i<N;i++) {
-         cx=(int)floor(rx[i]/nblist->lc->lcell);
-         cy=(int)floor(ry[i]/nblist->lc->lcell);
-         cz=(int)floor(rz[i]/nblist->lc->lcell);
-         c=cx+cy*nblist->lc->ncells+cz*nblist->lc->ncells2;
-         nblist->lc->neighbors[i] = nblist->lc->head[c];
-         nblist->lc->head[c] = i;
-       }
-       nblist->lc->update=0;
+
+   /* rebuild cell list */
+   if (nblist->lc&&nblist->lc->update) {
+     for(c=0;c<nblist->lc->ncells3;c++){
+       nblist->lc->head[c]=-1;
      }
+     /* this is an array implementation of a linked list*/
+     for(i=0;i<N;i++) {
+       cx=(int)floor(rx[i]/nblist->lc->lcell);
+       cy=(int)floor(ry[i]/nblist->lc->lcell);
+       cz=(int)floor(rz[i]/nblist->lc->lcell);
+       c=cx+cy*nblist->lc->ncells+cz*nblist->lc->ncells2;
+       nblist->lc->neighbors[i] = nblist->lc->head[c];
+       nblist->lc->head[c] = i;
+     }
+     nblist->lc->update=0;
+   }
+
+   /* no verlet list, simple update */
+   if(!nblist->vl){
      /* loop of cells in 3dim */
      for(cx=0;cx<nblist->lc->ncells;cx++){
        for(cy=0;cy<nblist->lc->ncells;cy++){
@@ -308,8 +312,60 @@ double total_e ( double * rx, double * ry, double * rz,
          }
        }
      }
+     return e+N*ecor;
    }
-   else if (nblist->vl->update) {
+
+   /* verlet list update from cell lists*/
+   /* not working yet */
+   if (nblist->lc && nblist->vl->update) {
+     k=0;
+     /* loop of cells in 3dim */
+     for(cx=0;cx<nblist->lc->ncells;cx++){
+       for(cy=0;cy<nblist->lc->ncells;cy++){
+         for(cz=0;cz<nblist->lc->ncells;cz++){
+           c=cx+cy*nblist->lc->ncells+cz*nblist->lc->ncells2;
+           /* loop over all neighbor cell of c */
+           for (nbx=cx-nblist->lc->left;nbx<=cx+nblist->lc->right;nbx++){
+             for (nby=cy-nblist->lc->left;nby<=cy+nblist->lc->right;nby++){
+                 for (nbz=cz-nblist->lc->left;nbz<=cz+nblist->lc->right;nbz++){
+                 /* calc cell number with respect to periodicity */
+                 int nb=((nbx+nblist->lc->ncells)%nblist->lc->ncells)
+		   +((nby+nblist->lc->ncells)%nblist->lc->ncells)*nblist->lc->ncells
+		   +((nbz+nblist->lc->ncells)%nblist->lc->ncells)*nblist->lc->ncells2;
+                 i=nblist->lc->head[c];
+                 while ( i != -1 ) {
+                   nblist->vl->head[i]=k;
+                   j=nblist->lc->head[nb];
+                   while ( j != -1 ) {
+                     if ( i < j ) {
+                       r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
+                       if (r2 < nblist->vl->cutoff2) {
+                         if(k == nblist->vl->size ) {
+                           /* double the size */
+                           nblist->vl->size*=2;
+                           nblist->vl->neighbors=(int *)realloc(nblist->vl->neighbors,nblist->vl->size*sizeof(int));
+                         }
+                         nblist->vl->neighbors[k]=j;
+			 k++;
+		       }
+                       calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
+                     }
+                     j = nblist->lc->neighbors[j];
+                   }
+                   i = nblist->lc->neighbors[i];
+                 }
+               }
+             }
+           }
+         }
+       }
+     }
+     nblist->vl->update=0;
+     return e+N*ecor;
+   }
+
+   /* verlet list update without cell list */
+   if (nblist->vl->update) {
      /* update neighbor list and calc lj */
      k=0;
      for (i=0;i<(N-1);i++) {
@@ -330,8 +386,10 @@ double total_e ( double * rx, double * ry, double * rz,
      }
      nblist->vl->head[N-1]=k;
      nblist->vl->update=0;
+     return e+N*ecor;
    }
-   else {
+
+   {
      /* use existing neighbor list */
      for (i=0;i<(N-1);i++) {
        for (k=nblist->vl->head[i];k<nblist->vl->head[i+1];k++) {
@@ -561,7 +619,7 @@ int main ( int argc, char * argv[] ) {
   fprintf(stdout,"# nSteps %i, seed %li, dt %.5lf\n", nSteps,Seed,dt);
 
   nblist_t *nblist=NULL;
-  
+
   if (( rvl > 0 ) || ( rlc > 0 )){
     nblist=(nblist_t *)malloc(sizeof(nblist_t));
   }
@@ -569,7 +627,7 @@ int main ( int argc, char * argv[] ) {
     fprintf(stderr,"-rvl together with -rlc not implemented yet\n");
     exit(1);
   }
-  
+
   /* verlet list stuff */
   if (rvl > 0) {
     nblist->vl=(vlist_t *)malloc(sizeof(vlist_t));
@@ -591,7 +649,7 @@ int main ( int argc, char * argv[] ) {
     nblist->vl->rx0 = (double*)malloc(N*sizeof(double));
     nblist->vl->ry0 = (double*)malloc(N*sizeof(double));
     nblist->vl->rz0 = (double*)malloc(N*sizeof(double));
-  } 
+  }
 
   if ( rlc > 0 ) {
     nblist->lc=(lclist_t *)malloc(sizeof(lclist_t));
@@ -665,11 +723,13 @@ int main ( int argc, char * argv[] ) {
   xyz_out(out,rx,ry,rz,vx,vy,vz,ix,iy,iz,L,N,16,1,unfold);
   fclose(out);
 
-  if (nblist->vl) {
-    save_positions(rx,ry,rz,N,nblist->vl->rx0,nblist->vl->ry0,nblist->vl->rz0);
-  }
-  if (nblist->lc) {
-    save_positions(rx,ry,rz,N,nblist->lc->rx0,nblist->lc->ry0,nblist->lc->rz0);
+  if (nblist){
+    if (nblist->vl) {
+      save_positions(rx,ry,rz,N,nblist->vl->rx0,nblist->vl->ry0,nblist->vl->rz0);
+    }
+    if (nblist->lc) {
+      save_positions(rx,ry,rz,N,nblist->lc->rx0,nblist->lc->ry0,nblist->lc->rz0);
+    }
   }
 
   PE = total_e(rx,ry,rz,fx,fy,fz,N,L,nblist,rc2,ecor,ecut,&vir_old);
@@ -737,7 +797,7 @@ int main ( int argc, char * argv[] ) {
         fz[i]+= -gamma*vz[i] + langevin_const*(drand48()-0.5);
       }
     }
-    
+
     /* Second integration half-step */
     KE = 0.0;
     for (i=0;i<N;i++) {
