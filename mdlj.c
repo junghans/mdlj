@@ -196,7 +196,9 @@ void calc_lj ( int i, int j, double dx, double dy, double dz, double r2,
 typedef struct{
   int *head; ///< point to first neighboring particles
   int *neighbors; ///<list of all neighboring paricles
-  int linked_cell; ///< use linked cell instead of verlet lists
+  int *lc_head; ///< point to first neighboring particles 
+  int *lc_neighbors; ///<list of all neighboring paricles
+  int rlc; ///< size of the cells for for use linked cell lists
   int size; ///< size of neighbors array
   int frequence; ///<update frequenz
   int update; ///< if list should be updated
@@ -234,14 +236,14 @@ double total_e ( double * rx, double * ry, double * rz,
        }
      }
    }
-   else if (nblist->linked_cell) {
-     int ncells=(int)floor(L/nblist->cutoff);
+   else if (nblist->rlc > 0) {
+     int ncells=(int)floor(L/nblist->rlc);
      double lcell=L/ncells;
      int ncells2=ncells*ncells;
      int cx,cy,cz,nbx,nby,nbz,c;
      if (nblist->update) {
        for(c=0;c<ncells2*ncells;c++){
-         nblist->head[c]=-1;
+         nblist->lc_head[c]=-1;
        }
        /* this is an array implementation of a linked list*/
        for(i=0;i<N;i++) {
@@ -249,8 +251,8 @@ double total_e ( double * rx, double * ry, double * rz,
          cy=(int)floor(ry[i]/lcell);
          cz=(int)floor(rz[i]/lcell);
          c=cx+cy*ncells+cz*ncells2;
-         nblist->neighbors[i] = nblist->head[c];
-         nblist->head[c] = i;
+         nblist->lc_neighbors[i] = nblist->lc_head[c];
+         nblist->lc_head[c] = i;
        }
        nblist->update=0;
      }
@@ -273,17 +275,17 @@ double total_e ( double * rx, double * ry, double * rz,
                  for (nbz=cz-left;nbz<=cz+right;nbz++){
                  /* calc cell number with respect to periodicity */
                  int nb=((nbx+ncells)%ncells)+((nby+ncells)%ncells)*ncells+((nbz+ncells)%ncells)*ncells2;
-                 i=nblist->head[c];
+                 i=nblist->lc_head[c];
                  while ( i != -1 ) {
-                   j=nblist->head[nb];
+                   j=nblist->lc_head[nb];
                    while ( j != -1 ) {
                      if ( i < j ) {
                        r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
                        calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
                      }
-                     j = nblist->neighbors[j];
+                     j = nblist->lc_neighbors[j];
                    }
-                   i = nblist->neighbors[i];
+                   i = nblist->lc_neighbors[i];
                  }
                }
              }
@@ -471,7 +473,8 @@ int main ( int argc, char * argv[] ) {
   char * wrt_code_str = "w";
   char * init_cfg_file = NULL;
   double rlist=0;
-  int nblist_frequenz=0,linked_cell=0;
+  double rlc=0;
+  int nblist_frequenz=0;
 
   unsigned long int Seed = 23410981;
 
@@ -493,7 +496,7 @@ int main ( int argc, char * argv[] ) {
     else if (!strcmp(argv[i],"-seed")) Seed = (unsigned long)atoi(argv[++i]);
     else if (!strcmp(argv[i],"-rlist")) rlist = atof(argv[++i]);
     else if (!strcmp(argv[i],"-uplist")) nblist_frequenz = atoi(argv[++i]);
-    else if (!strcmp(argv[i],"-lc")) linked_cell = 1;
+    else if (!strcmp(argv[i],"-rlc")) rlc = atof(argv[++i]);
     else if (!strcmp(argv[i],"-uf")) unfold = 1;
     else if ((!strcmp(argv[i],"-h"))||(!strcmp(argv[i],"--help"))) {
       fprintf(stdout,"mdlj usage:\n");
@@ -513,7 +516,7 @@ int main ( int argc, char * argv[] ) {
       fprintf(stdout,"\t -seed [integer]\tRandom number generator seed (default %li)\n",Seed);
       fprintf(stdout,"\t -rlist [real]\t\tUse neighbor lists with this cutoff (default %f)\n",rlist);
       fprintf(stdout,"\t -uplist [int]\t\tNeighbor lists update frequence with 0=auto (default %i)\n",nblist_frequenz);
-      fprintf(stdout,"\t -lc          \t\tUse linked cells instead of Verlet lists\n");
+      fprintf(stdout,"\t -rlc [read]  \t\tUse linked cells with this size (default %f)\n",rlc);
       fprintf(stdout,"\t -uf          \t\tPrint unfolded coordinates in output files (default %i)\n",unfold);
       fprintf(stdout,"\t -h           \t\tPrint this info\n");
       exit(0);
@@ -543,37 +546,46 @@ int main ( int argc, char * argv[] ) {
   fprintf(stdout,"# NVE MD Simulation of a Lennard-Jones fluid\n");
   fprintf(stdout,"# L = %.5lf; rho = %.5lf; N = %i; rc = %.5lf\n",
           L,rho,N,sqrt(rc2));
-  fprintf(stdout,"# nSteps %i, seed %li, dt %.5lf\n",
-nSteps,Seed,dt);
+  fprintf(stdout,"# nSteps %i, seed %li, dt %.5lf\n", nSteps,Seed,dt);
 
   nblist_t *nblist=NULL;
   double *rx0,*ry0,*rz0;
+  
+  if ((rlist > 0)|| ( rlc > 0 )){
+    nblist=(nblist_t *)malloc(sizeof(nblist_t));
+    nblist->frequence = nblist_frequenz;
+  }
+  
   /* verlet list stuff */
   if (rlist > 0) {
-    nblist=(nblist_t *)malloc(sizeof(nblist_t));
     nblist->cutoff = rlist;
     nblist->cutoff2 = rlist*rlist;
-    nblist->frequence = nblist_frequenz;
-    nblist->linked_cell = linked_cell;
     if (nblist->cutoff2 < rc2) {
       fprintf(stderr,"-rlist must be bigger than -rc\n");
       exit(1);
     }
-    if (nblist->linked_cell) {
-      int ncells=(int)floor(L/nblist->cutoff);
-      nblist->skin2 = pow(L/ncells-sqrt(rc2),2);
-      fprintf(stdout,"# using Linked cell lists with grid %i x %i x %i with update frequence %i\n",ncells,ncells,ncells,nblist->frequence);
-      nblist->neighbors = (int *)malloc(N*sizeof(int));
-      nblist->head = (int *)malloc(ncells*ncells*ncells*sizeof(int));
+    fprintf(stdout,"# using Verlet lists with cutoff %.5f with update frequence %i\n",nblist->cutoff,nblist->frequence);
+    /* assume 25 neighbors and realloc later if needed */
+    nblist->skin2 = pow(rlist-sqrt(rc2),2);
+    nblist->size= 25*N;
+    nblist->neighbors = (int *)malloc(nblist->size*sizeof(int));
+    nblist->head = (int *)malloc(N*sizeof(int));
+  } 
+
+  if ( rlc > 0 ) {
+    nblist->rlc = rlc;
+    int ncells=(int)floor(L/nblist->rlc);
+    nblist->skin2 = pow(L/ncells-sqrt(rc2),2);
+    if (rlc*rlc < rc2) {
+      fprintf(stderr,"-rlc must be bigger than -rc\n");
+      exit(1);
     }
-    else {
-      fprintf(stdout,"# using Verlet lists with cutoff %.5f with update frequence %i\n",nblist->cutoff,nblist->frequence);
-      /* assume 25 neighbors and realloc later if needed */
-      nblist->skin2 = pow(rlist-sqrt(rc2),2);
-      nblist->size= 25*N;
-      nblist->neighbors = (int *)malloc(nblist->size*sizeof(int));
-      nblist->head = (int *)malloc(N*sizeof(int));
-    }
+    fprintf(stdout,"# using Linked cell lists with grid %i x %i x %i with update frequence %i\n",ncells,ncells,ncells,nblist->frequence);
+    nblist->lc_neighbors = (int *)malloc(N*sizeof(int));
+    nblist->lc_head = (int *)malloc(ncells*ncells*ncells*sizeof(int));
+  }
+
+  if(nblist){
     /* always update nblist one time */
     nblist->update=1;
     /* old position saver*/
@@ -708,8 +720,14 @@ nSteps,Seed,dt);
     free(rx0);
     free(ry0);
     free(rz0);
-    free(nblist->neighbors);
-    free(nblist->head);
+    if(nblist->cutoff > 0 ){
+      free(nblist->neighbors);
+      free(nblist->head);
+    }
+    if(nblist->rlc > 0 ){
+      free(nblist->lc_neighbors);
+      free(nblist->lc_head);
+    }
     free(nblist);
   }
   free(rx);
