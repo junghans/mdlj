@@ -45,18 +45,18 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
    periodic boundary crossings a particle has performed; thus,
    the "unfolded" coordinate is rx[i]+ix[i]*L. */
 void xyz_out (FILE * fp,
-	      double * rx, double * ry, double * rz,
-	      double * vx, double * vy, double * vz,
-	      int * ix, int * iy, int * iz, double L,
-	      int N, int z, int put_vel, int unfold) {
+              double * rx, double * ry, double * rz,
+              double * vx, double * vy, double * vz,
+              int * ix, int * iy, int * iz, double L,
+              int N, int z, int put_vel, int unfold) {
   int i;
 
   fprintf(fp,"%i %i\n\n",N,put_vel);
   for (i=0;i<N;i++) {
     fprintf(fp,"%i %.8lf %.8lf %.8lf ",z,
-	    rx[i]+(unfold?(ix[i]*L):0.0),
-	    ry[i]+(unfold?(iy[i]*L):0.0),
-	    rz[i]+(unfold?(iz[i]*L):0.0));
+            rx[i]+(unfold?(ix[i]*L):0.0),
+            ry[i]+(unfold?(iy[i]*L):0.0),
+            rz[i]+(unfold?(iz[i]*L):0.0));
     if (put_vel)
       fprintf(fp,"%.8lf %.8lf %.8lf",vx[i],vy[i],vz[i]);
     fprintf(fp,"\n");
@@ -64,8 +64,8 @@ void xyz_out (FILE * fp,
 }
 
 int xyz_in (FILE * fp, double * rx, double * ry, double * rz,
-	     double * vx, double * vy, double * vz,
-	     int * N) {
+             double * vx, double * vy, double * vz,
+             int * N) {
   int i;
   int has_vel, dum;
   fscanf(fp,"%i %i\n\n",N,&has_vel);
@@ -175,7 +175,7 @@ double per_dist2(int i, int j,
  */
 void calc_lj ( int i, int j, double dx, double dy, double dz, double r2,
                double * fx, double * fy, double * fz, double L,
-	       double rc2, double ecut, double * vir, double *e) {
+               double rc2, double ecut, double * vir, double *e) {
   double r6i, f;
 
   if (r2<rc2) {
@@ -210,9 +210,9 @@ typedef struct{
  *  is also computed and returned in *vir.
  */
 double total_e ( double * rx, double * ry, double * rz,
-		 double * fx, double * fy, double * fz,
-		 int N, double L, nblist_t *nblist,
-		 double rc2, double ecor, double ecut, double * vir ) {
+                 double * fx, double * fy, double * fz,
+                 int N, double L, nblist_t *nblist,
+                 double rc2, double ecor, double ecut, double * vir ) {
    int i,j,k;
    double e = 0.0;
 
@@ -229,7 +229,7 @@ double total_e ( double * rx, double * ry, double * rz,
      /* do N square calculation */
      for (i=0;i<(N-1);i++) {
        for (j=i+1;j<N;j++) {
-	 r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
+         r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
          calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
        }
      }
@@ -241,16 +241,16 @@ double total_e ( double * rx, double * ry, double * rz,
      int cx,cy,cz,nbx,nby,nbz,c;
      if (nblist->update) {
        for(c=0;c<ncells2*ncells;c++){
-	 nblist->head[c]=-1;
+         nblist->head[c]=-1;
        }
        /* this is an array implementation of a linked list*/
        for(i=0;i<N;i++) {
-	 cx=(int)floor(rx[i]/lcell);
-	 cy=(int)floor(ry[i]/lcell);
-	 cz=(int)floor(rz[i]/lcell);
-	 c=cx+cy*ncells+cz*ncells2;
-	 nblist->neighbors[i] = nblist->head[c];
-	 nblist->head[c] = i;
+         cx=(int)floor(rx[i]/lcell);
+         cy=(int)floor(ry[i]/lcell);
+         cz=(int)floor(rz[i]/lcell);
+         c=cx+cy*ncells+cz*ncells2;
+         nblist->neighbors[i] = nblist->head[c];
+         nblist->head[c] = i;
        }
        nblist->update=0;
      }
@@ -266,29 +266,29 @@ double total_e ( double * rx, double * ry, double * rz,
      for(cx=0;cx<ncells;cx++){
        for(cy=0;cy<ncells;cy++){
          for(cz=0;cz<ncells;cz++){
-	   c=cx+cy*ncells+cz*ncells2;
-	   /* loop over all neighbor cell of c */
-	   for (nbx=cx-left;nbx<=cx+right;nbx++){
-	     for (nby=cy-left;nby<=cy+right;nby++){
-  	       for (nbz=cz-left;nbz<=cz+right;nbz++){
-		 /* calc cell number with respect to periodicity */
-		 int nb=((nbx+ncells)%ncells)+((nby+ncells)%ncells)*ncells+((nbz+ncells)%ncells)*ncells2;
-		 i=nblist->head[c];
-		 while ( i != -1 ) {
-		   j=nblist->head[nb];
-		   while ( j != -1 ) {
-		     if ( i < j ) {
-	               r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
+           c=cx+cy*ncells+cz*ncells2;
+           /* loop over all neighbor cell of c */
+           for (nbx=cx-left;nbx<=cx+right;nbx++){
+             for (nby=cy-left;nby<=cy+right;nby++){
+                 for (nbz=cz-left;nbz<=cz+right;nbz++){
+                 /* calc cell number with respect to periodicity */
+                 int nb=((nbx+ncells)%ncells)+((nby+ncells)%ncells)*ncells+((nbz+ncells)%ncells)*ncells2;
+                 i=nblist->head[c];
+                 while ( i != -1 ) {
+                   j=nblist->head[nb];
+                   while ( j != -1 ) {
+                     if ( i < j ) {
+                       r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
                        calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
-		     }
-		     j = nblist->neighbors[j];
-		   }
-		   i = nblist->neighbors[i];
-		 }
-	       }
-	     }
-	   }
-	 }
+                     }
+                     j = nblist->neighbors[j];
+                   }
+                   i = nblist->neighbors[i];
+                 }
+               }
+             }
+           }
+         }
        }
      }
    }
@@ -298,17 +298,17 @@ double total_e ( double * rx, double * ry, double * rz,
      for (i=0;i<(N-1);i++) {
        nblist->head[i]=k;
        for (j=i+1;j<N;j++) {
-	 r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
-	 if (r2<nblist->cutoff2) {
-	   if(k == nblist->size ) {
-	     /* double the size */
-	     nblist->size*=2;
-	     nblist->neighbors=(int *)realloc(nblist->neighbors,nblist->size*sizeof(int));
-	   }
-	   nblist->neighbors[k]=j;
-	   k++;
+         r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
+         if (r2<nblist->cutoff2) {
+           if(k == nblist->size ) {
+             /* double the size */
+             nblist->size*=2;
+             nblist->neighbors=(int *)realloc(nblist->neighbors,nblist->size*sizeof(int));
+           }
+           nblist->neighbors[k]=j;
+           k++;
            calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
-	 }
+         }
        }
      }
      nblist->head[N-1]=k;
@@ -318,8 +318,8 @@ double total_e ( double * rx, double * ry, double * rz,
      /* use existing neighbor list */
      for (i=0;i<(N-1);i++) {
        for (k=nblist->head[i];k<nblist->head[i+1];k++) {
-	 j=nblist->neighbors[k];
-	 r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
+         j=nblist->neighbors[k];
+         r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
          calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
        }
      }
@@ -359,10 +359,10 @@ double drand_gaussian(double mean, double sigma) {
    to achieve a given box size and thereby, volume,
    and density */
 void init ( double * rx, double * ry, double * rz,
-	    double * vx, double * vy, double * vz,
-	    int * ix, int * iy, int * iz,
-	    int * N, double L, double T0,
-	    double * KE, char * icf) {
+            double * vx, double * vy, double * vz,
+            int * ix, int * iy, int * iz,
+            int * N, double L, double T0,
+            double * KE, char * icf) {
   int i,iix,iiy,iiz;
   double cmvx=0.0,cmvy=0.0,cmvz=0.0;
   double T, fac;
@@ -397,12 +397,12 @@ void init ( double * rx, double * ry, double * rz,
       rz[i] = ((double)iiz+0.5)*L/n3;
       iix++;
       if (iix==n3) {
-	iix=0;
-	iiy++;
-	if (iiy==n3) {
-	  iiy=0;
-	  iiz++;
-	}
+        iix=0;
+        iiy++;
+        if (iiy==n3) {
+          iiy=0;
+          iiz++;
+        }
       }
     }
   }
@@ -520,7 +520,7 @@ int main ( int argc, char * argv[] ) {
     }
     else {
       fprintf(stderr,"Error: Command-line argument '%s' not recognized.\n",
-	      argv[i]);
+              argv[i]);
       exit(-1);
     }
   }
@@ -542,7 +542,7 @@ int main ( int argc, char * argv[] ) {
   /* Output some initial information */
   fprintf(stdout,"# NVE MD Simulation of a Lennard-Jones fluid\n");
   fprintf(stdout,"# L = %.5lf; rho = %.5lf; N = %i; rc = %.5lf\n",
-	  L,rho,N,sqrt(rc2));
+          L,rho,N,sqrt(rc2));
   fprintf(stdout,"# nSteps %i, seed %li, dt %.5lf\n",
 nSteps,Seed,dt);
 
@@ -662,11 +662,11 @@ nSteps,Seed,dt);
     if (nblist) {
       /* auto nblist update */
       if (nblist->frequence==0) {
-	/*2* dx > skin */
-	if (4*max_moved_distance2(rx,ry,rz,N,rx0,ry0,rz0) > nblist->skin2) {
-	  nblist->update=1;
+        /*2* dx > skin */
+        if (4*max_moved_distance2(rx,ry,rz,N,rx0,ry0,rz0) > nblist->skin2) {
+          nblist->update=1;
           save_positions(rx,ry,rz,N,rx0,ry0,rz0);
-	}
+        }
       }
       else if (s%nblist->frequence==0) {
         nblist->update=1;
@@ -696,7 +696,7 @@ nSteps,Seed,dt);
     KE*=0.5;
     TE=PE+KE;
     fprintf(stdout,"%i %.5lf %.5lf %.5lf %.5lf %.5le %.5lf %.5lf\n",
-	    s,s*dt,PE,KE,TE,(TE-TE0)/TE0,KE*2/3./N,rho*KE*2./3./N+vir/3.0/V);
+            s,s*dt,PE,KE,TE,(TE-TE0)/TE0,KE*2/3./N,rho*KE*2./3./N+vir/3.0/V);
     if (!(s%fSamp)) {
       sprintf(fn,"%i.xyz",!strcmp(wrt_code_str,"a")?0:s);
       out=fopen(fn,wrt_code_str);
