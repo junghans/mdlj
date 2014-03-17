@@ -16,3 +16,21 @@ $(NAME): $(OBJS)
 .PHONY: clean
 clean:
 	rm -f $(NAME) $(OBJS)
+	rm -rf Doxyfile html
+
+Doxyfile: Makefile
+	doxygen -g - | sed \
+	  -e '/PROJECT_NAME/s/".*"/"$(NAME)"/' \
+	  -e '/^HAVE_DOT/s/NO/YES/' \
+	  -e '/^CALL.*_GRAPH/s/NO/YES/' \
+	  -e '/^EXTRACT_/s/ NO/ YES/' \
+	  -e '/^INLINE_SOURCES/s/NO/YES/' \
+	  -e '/^SOURCE_BROWSER/s/NO/YES/' \
+	  -e '/^GENERATE_LATEX/s/YES/NO/' \
+	   > $@
+
+.PHONY: doc
+doc: html
+
+html: $(NAME).c $(EXTRA_SRC) Doxyfile
+	doxygen Doxyfile

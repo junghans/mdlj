@@ -406,7 +406,7 @@ double total_e ( double * rx, double * ry, double * rz,
  * generate a gaussian random number using the
  * Box-Muller method
  * \param[in] mean mean value of the gaussian
- * \param[in sigma standard deviation of the gaussian
+ * \param[in] sigma standard deviation of the gaussian
  * \return gaussian random number
  */
 double drand_gaussian(double mean, double sigma) {
