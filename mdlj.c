@@ -323,7 +323,7 @@ double total_e ( double * rx, double * ry, double * rz,
            c=cx+cy*nblist->lc->ncells+cz*nblist->lc->ncells2;
            /* note different loop order than above*/
            for (i=nblist->lc->head[c];i!=-1;i=nblist->lc->neighbors[i]) {
-             nblist->vl->head[i]=k;
+             nblist->vl->head[l]=k;
              nblist->vl->id_head[l++]=i;
              /* loop over all neighbor cell of c */
              for (nbx=cx-nblist->lc->left;nbx<=cx+nblist->lc->right;nbx++){
@@ -354,8 +354,8 @@ double total_e ( double * rx, double * ry, double * rz,
          }
        }
      }
-     /* not fully working yet */
-     nblist->vl->update=1;
+     nblist->vl->head[l]=k;
+     nblist->vl->update=0;
      return e+N*ecor;
    }
 
@@ -383,15 +383,20 @@ double total_e ( double * rx, double * ry, double * rz,
      return e+N*ecor;
    }
 
-   {
-     /* use existing neighbor list */
-     for (l=0;l<(N-1);l++) {
-       if (nblist->vl->id_head){
-         i=nblist->vl->id_head[l];
-       } else {
-         i=l;
-       }
+   /* use existing neighbor list with linked id mapping */
+   if (nblist->vl->id_head){
+     for (l=0;l<N;l++) {
+       i=nblist->vl->id_head[l];
        for (k=nblist->vl->head[l];k<nblist->vl->head[l+1];k++) {
+         j=nblist->vl->neighbors[k];
+         r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
+         calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
+       }
+     }
+   } else {
+     /* use existing neighbor list verlit list only */
+     for (i=0;i<(N-1);i++) {
+       for (k=nblist->vl->head[i];k<nblist->vl->head[i+1];k++) {
          j=nblist->vl->neighbors[k];
          r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
          calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
@@ -622,9 +627,6 @@ int main ( int argc, char * argv[] ) {
   if (( rvl > 0 ) || ( rlc > 0 )){
     nblist=(nblist_t *)malloc(sizeof(nblist_t));
   }
-  if (( rvl > 0 ) && ( rlc > 0 )){
-    fprintf(stderr,"WARNING: -rvl together with -rlc not fully implemented yet\n");
-  }
 
   /* verlet list stuff */
   if (rvl > 0) {
@@ -679,6 +681,8 @@ int main ( int argc, char * argv[] ) {
     nblist->lc->rz0 = (double*)malloc(N*sizeof(double));
     if(nblist->vl) {
       nblist->vl->id_head = (int *)malloc(N*sizeof(int));
+      /* we need to store an end head for the Nth particle, too */
+      nblist->vl->head = (int *)realloc(nblist->vl->head,(N+1)*sizeof(int));
     }
   }
 
