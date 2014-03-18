@@ -263,7 +263,7 @@ double total_e ( double * rx, double * ry, double * rz,
    }
 
    /* rebuild cell list */
-   if (nblist->lc&&nblist->lc->update) {
+   if (nblist->lc && nblist->lc->update) {
      for(c=0;c<nblist->lc->ncells3;c++){
        nblist->lc->head[c]=-1;
      }
@@ -292,8 +292,8 @@ double total_e ( double * rx, double * ry, double * rz,
                  for (nbz=cz-nblist->lc->left;nbz<=cz+nblist->lc->right;nbz++){
                  /* calc cell number with respect to periodicity */
                  int nb=((nbx+nblist->lc->ncells)%nblist->lc->ncells)
-		   +((nby+nblist->lc->ncells)%nblist->lc->ncells)*nblist->lc->ncells
-		   +((nbz+nblist->lc->ncells)%nblist->lc->ncells)*nblist->lc->ncells2;
+                   +((nby+nblist->lc->ncells)%nblist->lc->ncells)*nblist->lc->ncells
+                   +((nbz+nblist->lc->ncells)%nblist->lc->ncells)*nblist->lc->ncells2;
                  i=nblist->lc->head[c];
                  while ( i != -1 ) {
                    j=nblist->lc->head[nb];
@@ -316,7 +316,6 @@ double total_e ( double * rx, double * ry, double * rz,
    }
 
    /* verlet list update from cell lists*/
-   /* not working yet */
    if (nblist->lc && nblist->vl->update) {
      k=0;
      /* loop of cells in 3dim */
@@ -324,17 +323,18 @@ double total_e ( double * rx, double * ry, double * rz,
        for(cy=0;cy<nblist->lc->ncells;cy++){
          for(cz=0;cz<nblist->lc->ncells;cz++){
            c=cx+cy*nblist->lc->ncells+cz*nblist->lc->ncells2;
-           /* loop over all neighbor cell of c */
-           for (nbx=cx-nblist->lc->left;nbx<=cx+nblist->lc->right;nbx++){
-             for (nby=cy-nblist->lc->left;nby<=cy+nblist->lc->right;nby++){
-                 for (nbz=cz-nblist->lc->left;nbz<=cz+nblist->lc->right;nbz++){
-                 /* calc cell number with respect to periodicity */
-                 int nb=((nbx+nblist->lc->ncells)%nblist->lc->ncells)
-		   +((nby+nblist->lc->ncells)%nblist->lc->ncells)*nblist->lc->ncells
-		   +((nbz+nblist->lc->ncells)%nblist->lc->ncells)*nblist->lc->ncells2;
-                 i=nblist->lc->head[c];
-                 while ( i != -1 ) {
-                   nblist->vl->head[i]=k;
+           /* note different loop order than above*/
+           i=nblist->lc->head[c];
+           nblist->vl->head[i]=k;
+           while ( i != -1 ) {
+             /* loop over all neighbor cell of c */
+             for (nbx=cx-nblist->lc->left;nbx<=cx+nblist->lc->right;nbx++){
+               for (nby=cy-nblist->lc->left;nby<=cy+nblist->lc->right;nby++){
+                   for (nbz=cz-nblist->lc->left;nbz<=cz+nblist->lc->right;nbz++){
+                   /* calc cell number with respect to periodicity */
+                   int nb=((nbx+nblist->lc->ncells)%nblist->lc->ncells)
+                     +((nby+nblist->lc->ncells)%nblist->lc->ncells)*nblist->lc->ncells
+                     +((nbz+nblist->lc->ncells)%nblist->lc->ncells)*nblist->lc->ncells2;
                    j=nblist->lc->head[nb];
                    while ( j != -1 ) {
                      if ( i < j ) {
@@ -346,21 +346,22 @@ double total_e ( double * rx, double * ry, double * rz,
                            nblist->vl->neighbors=(int *)realloc(nblist->vl->neighbors,nblist->vl->size*sizeof(int));
                          }
                          nblist->vl->neighbors[k]=j;
-			 k++;
-		       }
-                       calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
+                         k++;
+                         calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
+                       }
                      }
                      j = nblist->lc->neighbors[j];
                    }
-                   i = nblist->lc->neighbors[i];
                  }
                }
              }
+             i = nblist->lc->neighbors[i];
            }
          }
        }
      }
-     nblist->vl->update=0;
+     /* not fully working yet */
+     nblist->vl->update=1;
      return e+N*ecor;
    }
 
@@ -624,8 +625,7 @@ int main ( int argc, char * argv[] ) {
     nblist=(nblist_t *)malloc(sizeof(nblist_t));
   }
   if (( rvl > 0 ) && ( rlc > 0 )){
-    fprintf(stderr,"-rvl together with -rlc not implemented yet\n");
-    exit(1);
+    fprintf(stderr,"WARNING: -rvl together with -rlc not fully implemented yet\n");
   }
 
   /* verlet list stuff */
@@ -670,8 +670,7 @@ int main ( int argc, char * argv[] ) {
       fprintf(stderr,"-rlc must be bigger than -rc\n");
       exit(1);
     }
-    fprintf(stdout,"# using Linked cell lists with grid %i x %i x %i\n",nblist->lc->ncells,nblist->lc->ncells,nblist->lc->ncells);
-    fprintf(stdout,"# skin2 %f lcell %f\n",nblist->lc->skin2, nblist->lc->lcell);
+    fprintf(stdout,"# using Linked cell lists with grid %i x %i x %i (cufoff %f)\n",nblist->lc->ncells,nblist->lc->ncells,nblist->lc->ncells,nblist->lc->lcell);
     nblist->lc->neighbors = (int *)malloc(N*sizeof(int));
     nblist->lc->head = (int *)malloc(nblist->lc->ncells3*sizeof(int));
     /* always update nblist one time */
@@ -770,7 +769,7 @@ int main ( int argc, char * argv[] ) {
       /* auto nblist update only */
       /*2* dx > skin */
       if ((nblist->lc)&&(nblist->lc->update==0)&&
-	  (4*max_moved_distance2(rx,ry,rz,N,nblist->lc->rx0,nblist->lc->ry0,nblist->lc->rz0) > nblist->lc->skin2)) {
+          (4*max_moved_distance2(rx,ry,rz,N,nblist->lc->rx0,nblist->lc->ry0,nblist->lc->rz0) > nblist->lc->skin2)) {
         nblist->lc->update=1;
         save_positions(rx,ry,rz,N,nblist->lc->rx0,nblist->lc->ry0,nblist->lc->rz0);
         /* trigger verlet list update too */
@@ -780,7 +779,7 @@ int main ( int argc, char * argv[] ) {
         }
       }
       if ((nblist->vl)&&(nblist->vl->update==0)&&
-	  (4*max_moved_distance2(rx,ry,rz,N,nblist->vl->rx0,nblist->vl->ry0,nblist->vl->rz0) > nblist->vl->skin2)) {
+          (4*max_moved_distance2(rx,ry,rz,N,nblist->vl->rx0,nblist->vl->ry0,nblist->vl->rz0) > nblist->vl->skin2)) {
         nblist->vl->update=1;
         save_positions(rx,ry,rz,N,nblist->vl->rx0,nblist->vl->ry0,nblist->vl->rz0);
       }
