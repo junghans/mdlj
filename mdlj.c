@@ -295,17 +295,13 @@ double total_e ( double * rx, double * ry, double * rz,
                  int nb=((nbx+nblist->lc->ncells)%nblist->lc->ncells)
                    +((nby+nblist->lc->ncells)%nblist->lc->ncells)*nblist->lc->ncells
                    +((nbz+nblist->lc->ncells)%nblist->lc->ncells)*nblist->lc->ncells2;
-                 i=nblist->lc->head[c];
-                 while ( i != -1 ) {
-                   j=nblist->lc->head[nb];
-                   while ( j != -1 ) {
+                 for (i=nblist->lc->head[c];i!=-1;i = nblist->lc->neighbors[i]) {
+                   for (j=nblist->lc->head[nb];j != -1;j = nblist->lc->neighbors[j]) {
                      if ( i < j ) {
                        r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
                        calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
                      }
-                     j = nblist->lc->neighbors[j];
                    }
-                   i = nblist->lc->neighbors[i];
                  }
                }
              }
@@ -326,8 +322,7 @@ double total_e ( double * rx, double * ry, double * rz,
          for(cz=0;cz<nblist->lc->ncells;cz++){
            c=cx+cy*nblist->lc->ncells+cz*nblist->lc->ncells2;
            /* note different loop order than above*/
-           i=nblist->lc->head[c];
-           while ( i != -1 ) {
+           for (i=nblist->lc->head[c];i!=-1;i=nblist->lc->neighbors[i]) {
              nblist->vl->head[i]=k;
              nblist->vl->id_head[l++]=i;
              /* loop over all neighbor cell of c */
@@ -338,8 +333,7 @@ double total_e ( double * rx, double * ry, double * rz,
                    int nb=((nbx+nblist->lc->ncells)%nblist->lc->ncells)
                      +((nby+nblist->lc->ncells)%nblist->lc->ncells)*nblist->lc->ncells
                      +((nbz+nblist->lc->ncells)%nblist->lc->ncells)*nblist->lc->ncells2;
-                   j=nblist->lc->head[nb];
-                   while ( j != -1 ) {
+                   for (j=nblist->lc->head[nb];j != -1;j = nblist->lc->neighbors[j]) {
                      if ( i < j ) {
                        r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
                        if (r2 < nblist->vl->cutoff2) {
@@ -352,12 +346,10 @@ double total_e ( double * rx, double * ry, double * rz,
                          calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
                        }
                      }
-                     j = nblist->lc->neighbors[j];
                    }
                  }
                }
              }
-             i = nblist->lc->neighbors[i];
            }
          }
        }
