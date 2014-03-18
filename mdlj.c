@@ -195,6 +195,7 @@ void calc_lj ( int i, int j, double dx, double dy, double dz, double r2,
 /** \brief contains all information about the verlet list */
 typedef struct{
   int *head; ///< point to first neighboring particles of the ith particle
+  int *id_head; ///< particle id of particle in head needed in combination with linked cell
   int *neighbors; ///<list of all neighboring paricles
   int size; ///< size of neighbors array
   int update; ///< if verlet list should be updated
@@ -238,7 +239,7 @@ double total_e ( double * rx, double * ry, double * rz,
                  double * fx, double * fy, double * fz,
                  int N, double L, nblist_t *nblist,
                  double rc2, double ecor, double ecut, double * vir ) {
-   int i,j,k;
+   int i,j,k,l;
    int cx,cy,cz,nbx,nby,nbz,c;
    double e = 0.0;
 
@@ -318,6 +319,7 @@ double total_e ( double * rx, double * ry, double * rz,
    /* verlet list update from cell lists*/
    if (nblist->lc && nblist->vl->update) {
      k=0;
+     l=0;
      /* loop of cells in 3dim */
      for(cx=0;cx<nblist->lc->ncells;cx++){
        for(cy=0;cy<nblist->lc->ncells;cy++){
@@ -325,8 +327,9 @@ double total_e ( double * rx, double * ry, double * rz,
            c=cx+cy*nblist->lc->ncells+cz*nblist->lc->ncells2;
            /* note different loop order than above*/
            i=nblist->lc->head[c];
-           nblist->vl->head[i]=k;
            while ( i != -1 ) {
+             nblist->vl->head[i]=k;
+             nblist->vl->id_head[l++]=i;
              /* loop over all neighbor cell of c */
              for (nbx=cx-nblist->lc->left;nbx<=cx+nblist->lc->right;nbx++){
                for (nby=cy-nblist->lc->left;nby<=cy+nblist->lc->right;nby++){
@@ -345,8 +348,7 @@ double total_e ( double * rx, double * ry, double * rz,
                            nblist->vl->size*=2;
                            nblist->vl->neighbors=(int *)realloc(nblist->vl->neighbors,nblist->vl->size*sizeof(int));
                          }
-                         nblist->vl->neighbors[k]=j;
-                         k++;
+                         nblist->vl->neighbors[k++]=j;
                          calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
                        }
                      }
@@ -379,8 +381,7 @@ double total_e ( double * rx, double * ry, double * rz,
              nblist->vl->size*=2;
              nblist->vl->neighbors=(int *)realloc(nblist->vl->neighbors,nblist->vl->size*sizeof(int));
            }
-           nblist->vl->neighbors[k]=j;
-           k++;
+           nblist->vl->neighbors[k++]=j;
            calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
          }
        }
@@ -392,8 +393,13 @@ double total_e ( double * rx, double * ry, double * rz,
 
    {
      /* use existing neighbor list */
-     for (i=0;i<(N-1);i++) {
-       for (k=nblist->vl->head[i];k<nblist->vl->head[i+1];k++) {
+     for (l=0;l<(N-1);l++) {
+       if (nblist->vl->id_head){
+         i=nblist->vl->id_head[l];
+       } else {
+         i=l;
+       }
+       for (k=nblist->vl->head[l];k<nblist->vl->head[l+1];k++) {
          j=nblist->vl->neighbors[k];
          r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
          calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
@@ -679,6 +685,9 @@ int main ( int argc, char * argv[] ) {
     nblist->lc->rx0 = (double*)malloc(N*sizeof(double));
     nblist->lc->ry0 = (double*)malloc(N*sizeof(double));
     nblist->lc->rz0 = (double*)malloc(N*sizeof(double));
+    if(nblist->vl) {
+      nblist->vl->id_head = (int *)malloc(N*sizeof(int));
+    }
   }
 
   if(!nblist){
@@ -817,14 +826,6 @@ int main ( int argc, char * argv[] ) {
     }
   }
   if(nblist) {
-    if(nblist->vl){
-      free(nblist->vl->neighbors);
-      free(nblist->vl->head);
-      free(nblist->vl->rx0);
-      free(nblist->vl->ry0);
-      free(nblist->vl->rz0);
-      free(nblist->vl);
-    }
     if(nblist->lc){
       free(nblist->lc->neighbors);
       free(nblist->lc->head);
@@ -832,6 +833,17 @@ int main ( int argc, char * argv[] ) {
       free(nblist->lc->ry0);
       free(nblist->lc->rz0);
       free(nblist->lc);
+      if(nblist->vl){
+        free(nblist->vl->id_head);
+      }
+    }
+    if(nblist->vl){
+      free(nblist->vl->neighbors);
+      free(nblist->vl->head);
+      free(nblist->vl->rx0);
+      free(nblist->vl->ry0);
+      free(nblist->vl->rz0);
+      free(nblist->vl);
     }
     free(nblist);
   }
