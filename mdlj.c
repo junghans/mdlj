@@ -167,14 +167,13 @@ double per_dist2(int i, int j,
  * \param[in,out] fx array of x-coordinate of the force of all particles
  * \param[in,out] fy array of y-coordinate of the force of all particles
  * \param[in,out] fz array of z-coordinate of the force of all particles
- * \param[in] L box length
  * \param[in] rc2 square of the cutoff distance
  * \param[in] ecut energy varlue at the cutoff
  * \param[in,out] vir variable to add the virial contribute to
  * \param[in,out] e variable to add the energy contribute to
  */
 void calc_lj ( int i, int j, double dx, double dy, double dz, double r2,
-               double * fx, double * fy, double * fz, double L,
+               double * fx, double * fy, double * fz,
                double rc2, double ecut, double * vir, double *e) {
   double r6i, f;
 
@@ -192,6 +191,49 @@ void calc_lj ( int i, int j, double dx, double dy, double dz, double r2,
   }
 }
 
+/** \brief contains all information about the dpd thermostat */
+typedef struct{
+  double cutoff2; ///< square of the cutoff
+  double gamma; ///< friction parameter
+  double prefactor; ///< dpd constant = sqrt(24.0*T*gamma/dt)
+  double *vx; ///<array of x-coordinate of the velocity of all particles
+  double *vy; ///<array of y-coordinate of the velocity of all particles
+  double *vz; ///<array of z-coordinate of the velocity of all particles
+} dpd_t;
+
+/** \brief calculates dpd force between two particles
+ * \param[in] i index of particle i
+ * \param[in] j index of particle j
+ * \param[in] dx array of x-coordinate of the distance vetor
+ * \param[in] dy array of y-coordinate of the distance vetor
+ * \param[in] dz array of z-coordinate of the distance vetor
+ * \param[in] r2 square of the distance vector
+ * \param[in,out] fx array of x-coordinate of the force of all particles
+ * \param[in,out] fy array of y-coordinate of the force of all particles
+ * \param[in,out] fz array of z-coordinate of the force of all particles
+ * \param[in] dpd structure with dpd information
+ */
+void calc_dpd ( int i, int j, double dx, double dy, double dz, double r2,
+               double * fx, double * fy, double * fz, dpd_t* dpd) {
+
+  double v_dot_d, amplitude;
+  double tmp_x,tmp_y,tmp_z;
+  if (r2 < dpd->cutoff2) {
+    v_dot_d  = ( dpd->vx[i] - dpd->vx[j] ) * dx ;
+    v_dot_d += ( dpd->vy[i] - dpd->vy[j] ) * dy ;
+    v_dot_d += ( dpd->vz[i] - dpd->vz[j] ) * dz ;
+    amplitude = dpd->prefactor / sqrt(r2) * (drand48()-0.5) - dpd->gamma * v_dot_d / r2;
+    tmp_x =  amplitude * dx;
+    fx[i] += tmp_x;
+    fx[j] -= tmp_x;
+    tmp_y =  amplitude * dy;
+    fy[i] += tmp_y;
+    fy[j] -= tmp_y;
+    tmp_z =  amplitude * dz;
+    fz[i] += tmp_z;
+    fz[j] -= tmp_z;
+  }
+}
 /** \brief contains all information about the verlet list */
 typedef struct{
   int *head; ///< point to first neighboring particles of the ith particle
@@ -225,7 +267,7 @@ typedef struct{
   double *rz0; ///<array of z-coordinate of the old position of all particles
 } lclist_t;
 
-  /** \brief contains all information about the neighbor list */
+/** \brief contains all information about the neighbor list */
 typedef struct{
   vlist_t *vl; ///< pointer to verlet list struct
   lclist_t *lc; ///< pointer to linked cell list struct
@@ -237,7 +279,7 @@ typedef struct{
  */
 double total_e ( double * rx, double * ry, double * rz,
                  double * fx, double * fy, double * fz,
-                 int N, double L, nblist_t *nblist,
+                 int N, double L, nblist_t *nblist, dpd_t *dpd,
                  double rc2, double ecor, double ecut, double * vir ) {
    int i,j,k,l;
    int cx,cy,cz,nbx,nby,nbz,c;
@@ -257,7 +299,10 @@ double total_e ( double * rx, double * ry, double * rz,
      for (i=0;i<(N-1);i++) {
        for (j=i+1;j<N;j++) {
          r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
-         calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
+         calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,rc2,ecut,vir,&e);
+	 if (dpd){
+           calc_dpd(i,j,dx,dy,dz,r2,fx,fy,fz,dpd);
+	 }
        }
      }
      return e+N*ecor;
@@ -299,7 +344,10 @@ double total_e ( double * rx, double * ry, double * rz,
                    for (j=nblist->lc->head[nb];j != -1;j = nblist->lc->neighbors[j]) {
                      if ( i < j ) {
                        r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
-                       calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
+                       calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,rc2,ecut,vir,&e);
+	               if (dpd){
+                         calc_dpd(i,j,dx,dy,dz,r2,fx,fy,fz,dpd);
+	               }
                      }
                    }
                  }
@@ -343,7 +391,10 @@ double total_e ( double * rx, double * ry, double * rz,
                            nblist->vl->neighbors=(int *)realloc(nblist->vl->neighbors,nblist->vl->size*sizeof(int));
                          }
                          nblist->vl->neighbors[k++]=j;
-                         calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
+                         calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,rc2,ecut,vir,&e);
+	                 if (dpd){
+                           calc_dpd(i,j,dx,dy,dz,r2,fx,fy,fz,dpd);
+	                 }
                        }
                      }
                    }
@@ -374,7 +425,10 @@ double total_e ( double * rx, double * ry, double * rz,
              nblist->vl->neighbors=(int *)realloc(nblist->vl->neighbors,nblist->vl->size*sizeof(int));
            }
            nblist->vl->neighbors[k++]=j;
-           calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
+           calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,rc2,ecut,vir,&e);
+	   if (dpd){
+             calc_dpd(i,j,dx,dy,dz,r2,fx,fy,fz,dpd);
+	   }
          }
        }
      }
@@ -390,7 +444,10 @@ double total_e ( double * rx, double * ry, double * rz,
        for (k=nblist->vl->head[l];k<nblist->vl->head[l+1];k++) {
          j=nblist->vl->neighbors[k];
          r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
-         calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
+         calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,rc2,ecut,vir,&e);
+	 if (dpd){
+           calc_dpd(i,j,dx,dy,dz,r2,fx,fy,fz,dpd);
+	 }
        }
      }
    } else {
@@ -399,7 +456,10 @@ double total_e ( double * rx, double * ry, double * rz,
        for (k=nblist->vl->head[i];k<nblist->vl->head[i+1];k++) {
          j=nblist->vl->neighbors[k];
          r2=per_dist2(i,j,rx,ry,rz,&dx,&dy,&dz,L);
-         calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,L,rc2,ecut,vir,&e);
+         calc_lj(i,j,dx,dy,dz,r2,fx,fy,fz,rc2,ecut,vir,&e);
+	 if (dpd){
+           calc_dpd(i,j,dx,dy,dz,r2,fx,fy,fz,dpd);
+	 }
        }
      }
    }
@@ -543,7 +603,8 @@ int main ( int argc, char * argv[] ) {
   int nSteps = 10, fSamp=100;
   int use_e_corr=0;
   int unfold = 0;
-  double gamma=0;
+  double langevin_gamma=0;
+  double dpd_gamma=0;
 
   char fn[20];
   FILE * out;
@@ -564,7 +625,8 @@ int main ( int argc, char * argv[] ) {
     else if (!strcmp(argv[i],"-ns")) nSteps = atoi(argv[++i]);
     else if (!strcmp(argv[i],"-T0")) T0=atof(argv[++i]);
     else if (!strcmp(argv[i],"-T")) T=atof(argv[++i]);
-    else if (!strcmp(argv[i],"-gamma")) gamma=atof(argv[++i]);
+    else if (!strcmp(argv[i],"-sd")) langevin_gamma=atof(argv[++i]);
+    else if (!strcmp(argv[i],"-dpd")) dpd_gamma=atof(argv[++i]);
     else if (!strcmp(argv[i],"-fs")) fSamp=atoi(argv[++i]);
     else if (!strcmp(argv[i],"-sf")) wrt_code_str = argv[++i];
     else if (!strcmp(argv[i],"-icf")) init_cfg_file = argv[++i];
@@ -583,7 +645,8 @@ int main ( int argc, char * argv[] ) {
       fprintf(stdout,"\t -rc [real]\t\tCutoff radius (default %f)\n",rc2);
       fprintf(stdout,"\t -ns [real]\t\tNumber of integration steps (default %i)\n",nSteps);
       fprintf(stdout,"\t -T0 [real]\t\tInitial temperature (default %f)\n",T0);
-      fprintf(stdout,"\t -gamma [real]\t\tUse Langevin thermostat frition constant 0=off (default %f)\n",gamma);
+      fprintf(stdout,"\t -sd [real]\t\tUse Langevin thermostat with frition constant 0=off (default %f)\n",langevin_gamma);
+      fprintf(stdout,"\t -dpd [real]\t\tUse DPD thermostat with frition constant 0=off (default %f)\n",dpd_gamma);
       fprintf(stdout,"\t -T [real]\t\tTemperature of the Langevin thermostat(default %f)\n",T);
       fprintf(stdout,"\t -fs [integer]\t\tSample frequency (default %i)\n",fSamp);
       fprintf(stdout,"\t -sf [a|w]\t\tAppend or write config output file (default %s)\n",wrt_code_str);
@@ -691,9 +754,13 @@ int main ( int argc, char * argv[] ) {
   }
 
   double langevin_const = 0;
-  if (gamma > 0) {
-    fprintf(stdout,"# using Langevin thermostat for T=%f with gamma=%f\n",T,gamma);
-    langevin_const = sqrt(24.0*T*gamma/dt);
+  if (langevin_gamma > 0) {
+    fprintf(stdout,"# using Langevin thermostat for T=%f with gamma=%f\n",T,langevin_gamma);
+    langevin_const = sqrt(24.0*T*langevin_gamma/dt);
+    if (dpd_gamma > 0 ) {
+      fprintf(stderr,"# error: dpd and langevin thermostat cannot be enable at the same time\n");
+      exit(-1);
+    }
   }
 
   /* Seed the random number generator */
@@ -719,6 +786,18 @@ int main ( int argc, char * argv[] ) {
   fy = (double*)malloc(N*sizeof(double));
   fz = (double*)malloc(N*sizeof(double));
 
+  /* dpd thermostat */
+  dpd_t *dpd = NULL;
+  if(dpd_gamma > 0) {
+    dpd = (dpd_t *)malloc(sizeof(dpd_t));
+    dpd->gamma = dpd_gamma;
+    dpd->cutoff2 = rc2; /*could be different */
+    dpd->prefactor = sqrt(24.0*T*dpd_gamma/dt);
+    dpd->vx = vx;
+    dpd->vy = vy;
+    dpd->vz = vz;
+  }
+
   /* Generate initial positions on a cubic grid,
      and measure initial energy */
   init(rx,ry,rz,vx,vy,vz,ix,iy,iz,&N,L,T0,&KE,init_cfg_file);
@@ -736,16 +815,24 @@ int main ( int argc, char * argv[] ) {
     }
   }
 
-  PE = total_e(rx,ry,rz,fx,fy,fz,N,L,nblist,rc2,ecor,ecut,&vir_old);
+  /* DPD thermostat */
+  /* in the initial md step the thermostat only acts over "half" dt */
+  if (dpd) {
+    dpd->gamma = dpd_gamma * sqrt(3);
+    PE = total_e(rx,ry,rz,fx,fy,fz,N,L,nblist,dpd,rc2,ecor,ecut,&vir_old);
+    dpd->gamma = dpd_gamma;
+  } else {
+    PE = total_e(rx,ry,rz,fx,fy,fz,N,L,nblist,dpd,rc2,ecor,ecut,&vir_old);
+  }
   TE0=PE+KE;
 
   /* Langevin thermostat */
   /* in the initial md step the thermostat only acts over "half" dt */
-  if (gamma > 0) {
+  if (langevin_gamma > 0) {
     for (i=0;i<N;i++) {
-      fx[i]+= -gamma*vx[i] + langevin_const*sqrt(3)*(drand48()-0.5);
-      fy[i]+= -gamma*vy[i] + langevin_const*sqrt(3)*(drand48()-0.5);
-      fz[i]+= -gamma*vz[i] + langevin_const*sqrt(3)*(drand48()-0.5);
+      fx[i]+= -langevin_gamma*vx[i] + langevin_const*sqrt(3)*(drand48()-0.5);
+      fy[i]+= -langevin_gamma*vy[i] + langevin_const*sqrt(3)*(drand48()-0.5);
+      fz[i]+= -langevin_gamma*vz[i] + langevin_const*sqrt(3)*(drand48()-0.5);
     }
   }
 
@@ -791,14 +878,14 @@ int main ( int argc, char * argv[] ) {
     }
 
     /* Calculate forces */
-    PE = total_e(rx,ry,rz,fx,fy,fz,N,L,nblist,rc2,ecor,ecut,&vir);
+    PE = total_e(rx,ry,rz,fx,fy,fz,N,L,nblist,dpd,rc2,ecor,ecut,&vir);
 
     /* Langevin thermostat */
-    if (gamma > 0) {
+    if (langevin_gamma > 0) {
       for (i=0;i<N;i++) {
-        fx[i]+= -gamma*vx[i] + langevin_const*(drand48()-0.5);
-        fy[i]+= -gamma*vy[i] + langevin_const*(drand48()-0.5);
-        fz[i]+= -gamma*vz[i] + langevin_const*(drand48()-0.5);
+        fx[i]+= -langevin_gamma*vx[i] + langevin_const*(drand48()-0.5);
+        fy[i]+= -langevin_gamma*vy[i] + langevin_const*(drand48()-0.5);
+        fz[i]+= -langevin_gamma*vz[i] + langevin_const*(drand48()-0.5);
       }
     }
 
