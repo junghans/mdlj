@@ -1,7 +1,7 @@
 language: c
 
 script:
-  - ./benchmark.sh -v -ns 20
+  - ./benchmark.sh -v -N 1000
 
 compiler:
   - clang
