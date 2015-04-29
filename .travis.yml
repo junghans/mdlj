@@ -1,0 +1,8 @@
+language: c
+
+script:
+  - ./benchmark.sh
+
+compiler:
+  - clang
+  - gcc
