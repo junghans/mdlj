@@ -15,7 +15,7 @@ $(NAME): $(OBJS)
 
 .PHONY: clean
 clean:
-	rm -f $(NAME) $(OBJS)
+	rm -f $(NAME) $(OBJS) $(NAME).gcno $(NAME).gcda $(NAME)out.*
 	rm -rf Doxyfile html
 
 Doxyfile: Makefile

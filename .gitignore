@@ -4,3 +4,7 @@ Makefile
 mdlj
 html
 Doxyfile
+mdlj.gcda
+mdlj.gcno
+*.xyz
+mdljout.*

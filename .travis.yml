@@ -2,8 +2,29 @@ language: c
 
 sudo: false
 
+addons:
+  apt:
+    packages:
+      - ccache
+
+env:
+  global:
+    - CCACHE_CPP2=yes
+  matrix:
+    - 
+    - COVERAGE=ON
+
+before_install:
+ - if [[ ${COVERAGE}  ]]; then pip install --user codecov; export CC="${CC} --coverage"; fi 
+
 script:
   - ./benchmark.sh -v -N 1000
+
+after_success:
+  - if [[ ${COVERAGE} ]]; then PATH=/usr/bin find . -type f -name "*.gcno" -execdir gcov {} + &>/dev/null && codecov; fi
+
+cache:
+  - ccache
 
 compiler:
   - clang
