@@ -19,6 +19,12 @@ before_install:
 
 script:
   - ./benchmark.sh -v -N 1000
+  - ./mdlj -h
+  - ./mdlj -dpd 1.0 
+  - ./mdlj -sd 1.0 -icf 0.xyz
+  - ./mdlj -dpd 1.0 -rvl 1.3
+  - ./mdlj -dpd 1.0 -rlc 1.3
+  - ./mdlj -dpd 1.0 -rvl 1.3 -rlc 1.3
 
 after_success:
   - if [[ ${COVERAGE} ]]; then PATH=/usr/bin find . -type f -name "*.gcno" -execdir gcov {} + &>/dev/null && codecov; fi
