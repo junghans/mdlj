@@ -1,8 +1,8 @@
-#Simple (micro)canonical Molecular Dynamics simulation of a Lennard-Jones fluid
+# Simple (micro)canonical Molecular Dynamics simulation of a Lennard-Jones fluid
 
 This code was mainly written for educational purposes and to test the performance of different neighbor search algorithms
 
-##Algorithms
+## Algorithms
 
 * Periodic boundary conditions
 * 2nd order Verlet integrator
@@ -15,7 +15,7 @@ This code was mainly written for educational purposes and to test the performanc
   * Linked-cell lists
   * Verlet lists on linked-cell lists
 
-##Issues
+## Issues
 
 Report bugs on the [github issues site](https://github.com/junghans/mdlj/issues)
 
