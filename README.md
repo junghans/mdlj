@@ -15,6 +15,8 @@ This code was mainly written for educational purposes and to test the performanc
   * Linked-cell lists
   * Verlet lists on linked-cell lists
 
+## [Documentation](http://junghans.github.io/mdlj/)
+
 ## Issues
 
 Report bugs on the [github issues site](https://github.com/junghans/mdlj/issues)
